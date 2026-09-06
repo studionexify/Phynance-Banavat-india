@@ -3002,3 +3002,114 @@ body.nav-open .nav-scrim { opacity:1; visibility:visible; pointer-events:auto; }
 }
 .sortbtn.on { background:var(--tea-soft); color:var(--ink); }
 .sortbtn svg { flex:none; }
+
+/* ── Quotation list: the table, for a screen with columns ────────
+   The same list the cards below hold, laid out in columns whose
+   headings are the sorter. Cards and table are both in the page and
+   the width decides which one is on screen — one list, one sort, one
+   selection, drawn twice rather than reasoned about twice. */
+.qtable-wrap { display:none; }
+.qrows .ckbox { display:flex; }
+
+@media (min-width:760px) {
+  .qtable-wrap {
+    display:block; overflow-x:auto;
+    background:var(--paper); border:1px solid var(--line-soft);
+    border-radius:18px; box-shadow:var(--e1);
+  }
+  .qrows, .sortbar.only-narrow { display:none; }
+}
+
+.qtable { width:100%; border-collapse:collapse; font-size:13.5px; }
+.qtable th, .qtable td {
+  padding:12px 14px; text-align:left; vertical-align:middle;
+  border-bottom:1px solid var(--line-soft);
+}
+.qtable thead th { padding-top:14px; padding-bottom:10px; }
+.qtable tbody tr:last-child td { border-bottom:0; }
+
+/* The heading is the control. It reads as a label until it is the
+   one sorting, so the column in charge of the order is obvious
+   without a second row of chips saying so. */
+.qt-sort {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:12px; font-weight:600; letter-spacing:.02em;
+  color:var(--ink-3); background:none; border:0; padding:0; cursor:pointer;
+  transition:color var(--t-fast);
+}
+.qt-sort:hover { color:var(--ink-2); }
+.qt-sort.on { color:var(--ink); }
+.qt-sortmark { display:inline-flex; opacity:.35; }
+.qt-sortmark.on { opacity:1; }
+
+.qt-row { cursor:pointer; transition:background var(--t-fast); }
+.qt-row:focus-visible { outline:2px solid var(--ink); outline-offset:-2px; }
+@media (hover:hover) and (pointer:fine) {
+  .qt-row:hover { background:var(--k-050); }
+}
+.qt-row.picked { background:var(--tea-soft); }
+
+.qt-no { font-weight:700; color:var(--ink); letter-spacing:-.1px; }
+.qt-sub { margin-top:2px; font-size:11.5px; color:var(--ink-3); }
+.qt-client { color:var(--ink-2); }
+.qt-date { color:var(--ink-3); white-space:nowrap; }
+.qtable td.qt-amt { font-weight:700; color:var(--ink); white-space:nowrap; text-align:right; }
+.qtable th.qt-amt { text-align:right; }
+.qtable th.qt-amt .qt-sort { flex-direction:row-reverse; }
+.qt-st { white-space:nowrap; }
+.qt-check { width:1%; padding-right:0; }
+.qt-acts { width:1%; white-space:nowrap; }
+.qt-acts .icon-btn { display:inline-flex; }
+
+/* ── The tick ────────────────────────────────────────────────── */
+.ckbox { display:inline-flex; align-items:center; flex:none; cursor:pointer; }
+.ckbox input { position:absolute; opacity:0; width:0; height:0; }
+.ckbox-box {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:18px; height:18px; border-radius:6px;
+  border:1.5px solid var(--line); background:var(--paper);
+  color:transparent; transition:background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+.ckbox-box svg { stroke-width:3; }
+.ckbox input:checked + .ckbox-box,
+.ckbox input:indeterminate + .ckbox-box {
+  background:var(--ink); border-color:var(--ink); color:var(--on-accent);
+}
+/* Some but not all: a tick would claim the whole list is selected,
+   so the partial state gets a bar of its own instead. */
+.ckbox input:indeterminate + .ckbox-box svg { display:none; }
+.ckbox input:indeterminate + .ckbox-box::after {
+  content:''; width:9px; height:2px; border-radius:1px; background:var(--on-accent);
+}
+.ckbox input:focus-visible + .ckbox-box { outline:2px solid var(--ink); outline-offset:2px; }
+.qrow2.picked { border-color:var(--ink); }
+
+/* ── The bulk bar ────────────────────────────────────────────────
+   In the page from the start and hidden while nothing is ticked, so
+   the first tick does not push the list down under the finger that
+   made it. */
+.bulkbar {
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  margin:0 0 10px; padding:9px 12px; border-radius:14px;
+  background:var(--ink); color:var(--k-050);
+  box-shadow:var(--e2);
+}
+.bulkbar[hidden] { display:none; }
+.bulkbar-n { font-size:12.5px; font-weight:700; letter-spacing:.01em; white-space:nowrap; }
+.bulkbar-acts { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-left:auto; }
+.bulkbtn {
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:12.5px; font-weight:600; color:var(--k-050);
+  padding:6px 10px; border-radius:999px; border:0; cursor:pointer;
+  background:rgba(255,255,255,.12);
+  transition:background var(--t-fast);
+}
+.bulkbtn:hover { background:rgba(255,255,255,.22); }
+.bulkbtn.danger { background:rgba(220,80,80,.30); }
+.bulkbtn.danger:hover { background:rgba(220,80,80,.45); }
+.bulkbtn.ghost { background:none; padding:6px; }
+@media (max-width:520px) {
+  .bulkbtn span { display:none; }
+  .bulkbtn { padding:8px; }
+  .bulkbtn.ghost { padding:8px; }
+}

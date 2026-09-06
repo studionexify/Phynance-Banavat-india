@@ -19,7 +19,7 @@ import { on, esc, toast, confirmSheet, field, openSheet, haptic } from '../ui.js
 import {
   quoteFamilies, quoteTotals, quoteName, STATUS, setStatus, deleteQuote, getQuote,
   reviseQuote, duplicateQuote, archiveQuote, unarchiveQuote, isArchived,
-  jobValueFor, quotationStats,
+  jobValueFor, quotationStats, acceptQuote,
 } from '../quotes.js';
 import { inr, dmy, fyOf } from '../format.js';
 import { openQuoteSheet } from './quotebuilder.js';
@@ -44,9 +44,24 @@ const SORTS = {
   date:   { label: 'Date',      cmp: (a, b) => (a.head.date || '').localeCompare(b.head.date || '') },
   client: { label: 'Client',    cmp: (a, b) => clientOf(a.head).localeCompare(clientOf(b.head)) },
   value:  { label: 'Value',     cmp: (a, b) => valueOf(a.head) - valueOf(b.head) },
+  status: { label: 'Status',    cmp: (a, b) => statusRank(a.head) - statusRank(b.head) },
 };
 let sortKey = 'mrNo';
 let sortDir = 'desc';
+
+/* Which quotations are ticked, for the actions that are worth doing to
+   a dozen at once rather than one sheet at a time. It survives a
+   refresh — marking six as sent re-renders the list, and losing the
+   ticks halfway through the batch is how a batch gets done twice. */
+const selected = new Set();
+
+/* Status sorts by where a quotation stands in the conversation, not by
+   the alphabet: a draft has not gone out, a sent one is waiting. */
+const STATUS_ORDER = ['draft', 'sent', 'accepted', 'declined', 'superseded'];
+function statusRank(q) {
+  const i = STATUS_ORDER.indexOf(q.status);
+  return i < 0 ? STATUS_ORDER.length : i;
+}
 
 function clientOf(q) {
   return ((q.client && q.client.name) || 'Unnamed client').trim().toLowerCase();
@@ -147,12 +162,19 @@ export async function render(root, ctx) {
         filter === 'all' ? 'Live quotations' : `${STATUS[filter].label} quotations`,
         sortControl(),
       )}
-      ${list.length ? `<div class="qrows">${list.map(row).join('')}</div>`
+      ${bulkBar()}
+      ${list.length ? `${table(list)}<div class="qrows">${list.map(row).join('')}</div>`
         : nothingHere('note',
             query || filter !== 'all' ? 'No quotation matches' : 'No quotations yet',
             query || filter !== 'all' ? 'Try another filter' : 'Write the first one and it lands here')}
     </div>
   `;
+
+  // A tick that scrolled off the list — filtered or searched away —
+  // is not something a bulk action should quietly act on.
+  const live = new Set(list.map((f) => f.head.id));
+  for (const id of [...selected]) if (!live.has(id)) selected.delete(id);
+  paintSelection(root, list);
 
   on(root, '[data-filter]', (e, b) => { filter = b.dataset.filter; ctx.refresh(); });
   on(root, '[data-fy]', (e, b) => { fy = b.dataset.fy; ctx.refresh(); });
@@ -169,6 +191,25 @@ export async function render(root, ctx) {
     ctx.refresh();
   });
 
+  // The same quotation appears twice in the DOM — once as a table row
+  // for a wide screen, once as a card for a narrow one, only ever one
+  // of them visible. The tick lives in the Set, not in either input,
+  // so both are repainted from it rather than from each other.
+  on(root, '[data-sel]', (e, b) => {
+    e.stopPropagation();
+    if (b.checked) selected.add(b.dataset.sel); else selected.delete(b.dataset.sel);
+    paintSelection(root, list);
+  }, 'change');
+
+  on(root, '[data-selall]', (e, b) => {
+    e.stopPropagation();
+    if (b.checked) for (const f of list) selected.add(f.head.id);
+    else selected.clear();
+    paintSelection(root, list);
+  }, 'change');
+
+  on(root, '[data-bulk]', (e, b) => runBulk(b.dataset.bulk, ctx));
+
   on(root, '[data-edit]', (e, b) => {
     e.stopPropagation();
     openQuoteSheet({ id: b.dataset.edit, onSaved: ctx.refresh });
@@ -184,7 +225,7 @@ export async function render(root, ctx) {
   // scrolling list is too easy to hit by accident to drop someone
   // into an edit.
   on(root, '[data-open]', (e, b) => {
-    if (e.target.closest('button')) return;
+    if (e.target.closest('button, label, input')) return;
     openQuoteDoc(b.dataset.open, { onSaved: ctx.refresh });
   });
 
@@ -204,13 +245,202 @@ export async function render(root, ctx) {
    "newest / largest first" is what makes sense the first time). */
 function sortControl() {
   return `
-    <div class="sortbar">
+    <div class="sortbar only-narrow">
       ${Object.entries(SORTS).map(([key, s]) => `
         <button class="sortbtn ${key === sortKey ? 'on' : ''}" data-sort="${key}">
           ${esc(s.label)}${key === sortKey ? icon(sortDir === 'desc' ? 'chevD' : 'chevU', 12) : ''}
         </button>
       `).join('')}
     </div>`;
+}
+
+/* ── The table, for a screen with room for columns ───────────────
+   Same list, same sort, same actions as the cards below it — the
+   difference is that a wide screen can show the fields side by side
+   under headings that sort them, which is how this is read at a desk.
+   Only ever one of the two is on screen; the media query decides.
+
+   The heading is the sorter: tapping the one already active flips
+   its direction, exactly as the chips do, because they are the same
+   handler. */
+const COLS = [
+  ['mrNo',   'Quotation', ''],
+  ['client', 'Client',    ''],
+  ['date',   'Issued',    'qt-date'],
+  ['value',  'Amount',    'qt-amt num'],
+  ['status', 'Status',    'qt-st'],
+];
+
+function sortMark(key) {
+  if (key !== sortKey) return `<span class="qt-sortmark">${icon('swap', 11)}</span>`;
+  return `<span class="qt-sortmark on">${icon(sortDir === 'desc' ? 'chevD' : 'chevU', 11)}</span>`;
+}
+
+function checkbox(id, label) {
+  return `
+    <label class="ckbox">
+      <input type="checkbox" data-sel="${esc(id)}" aria-label="${esc(label)}">
+      <span class="ckbox-box">${icon('check', 12)}</span>
+    </label>`;
+}
+
+function table(list) {
+  return `
+    <div class="qtable-wrap">
+      <table class="qtable">
+        <thead>
+          <tr>
+            <th class="qt-check">
+              <label class="ckbox">
+                <input type="checkbox" data-selall aria-label="Select every quotation shown">
+                <span class="ckbox-box">${icon('check', 12)}</span>
+              </label>
+            </th>
+            ${COLS.map(([key, label, cls]) => `
+              <th class="${cls}">
+                <button class="qt-sort ${key === sortKey ? 'on' : ''}" data-sort="${key}">
+                  ${esc(label)}${sortMark(key)}
+                </button>
+              </th>`).join('')}
+            <th class="qt-acts"></th>
+          </tr>
+        </thead>
+        <tbody>${list.map(trow).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function trow({ head: q, revisions }) {
+  const t = quoteTotals(q);
+  const st = STATUS[q.status];
+  const jobValue = q.status === 'accepted' ? jobValueFor(q) : t.total;
+  const lines = (q.lines || []).length;
+
+  return `
+    <tr class="qt-row" data-open="${esc(q.id)}" data-row="${esc(q.id)}" tabindex="0">
+      <td class="qt-check">${checkbox(q.id, `Select ${q.mrNo}`)}</td>
+      <td>
+        <div class="qt-no">${esc(q.mrNo)}</div>
+        <div class="qt-sub">${lines} item${lines === 1 ? '' : 's'}${revisions > 1 ? ` · rev ${revisions}` : ''}${q.title ? ` · ${esc(q.title)}` : ''}</div>
+      </td>
+      <td class="qt-client">${esc((q.client && q.client.name) || 'Unnamed client')}</td>
+      <td class="qt-date">${esc(dmy(q.date))}</td>
+      <td class="qt-amt num">${inr(jobValue)}</td>
+      <td class="qt-st"><span class="pill ${st.tone}">${esc(st.label)}</span></td>
+      <td class="qt-acts">
+        <button class="icon-btn plain sm" data-edit="${esc(q.id)}" aria-label="Edit ${esc(q.mrNo)}">${icon('edit', 16)}</button>
+        <button class="icon-btn plain sm" data-more="${esc(q.id)}" aria-label="More actions for ${esc(q.mrNo)}">${icon('menu', 16)}</button>
+      </td>
+    </tr>`;
+}
+
+/* ── Bulk selection ──────────────────────────────────────────────
+   The bar is in the page from the start and simply hidden while
+   nothing is ticked: ticking a box then has nothing to re-render, so
+   the list does not jump under the finger that ticked it. */
+function bulkBar() {
+  const acts = [
+    ['sent',    'check',    'Mark sent'],
+    ['produce', 'anvil',    'Send to production'],
+    ['archive', 'inbox',    'Archive'],
+    ['pdf',     'download', 'Download PDFs'],
+    ['del',     'trash',    'Delete'],
+  ];
+  return `
+    <div class="bulkbar" data-bulkbar hidden>
+      <span class="bulkbar-n" data-bulkcount>0 selected</span>
+      <div class="bulkbar-acts">
+        ${acts.map(([act, ico, label]) => `
+          <button class="bulkbtn ${act === 'del' ? 'danger' : ''}" data-bulk="${act}">
+            ${icon(ico, 15)}<span>${esc(label)}</span>
+          </button>`).join('')}
+        <button class="bulkbtn ghost" data-bulk="clear" aria-label="Clear the selection">${icon('close', 15)}</button>
+      </div>
+    </div>`;
+}
+
+/* One place decides how a tick looks, so the table row, the card and
+   the "select all" box can never disagree about what is selected. */
+function paintSelection(root, list) {
+  const n = selected.size;
+  for (const el of root.querySelectorAll('[data-sel]')) {
+    const on2 = selected.has(el.dataset.sel);
+    el.checked = on2;
+    const holder = el.closest('.qt-row, .qrow2');
+    if (holder) holder.classList.toggle('picked', on2);
+  }
+  const all = root.querySelector('[data-selall]');
+  if (all) {
+    all.checked = n > 0 && n === list.length;
+    all.indeterminate = n > 0 && n < list.length;
+  }
+  const bar = root.querySelector('[data-bulkbar]');
+  if (bar) {
+    bar.hidden = n === 0;
+    const label = bar.querySelector('[data-bulkcount]');
+    if (label) label.textContent = `${n} selected`;
+  }
+}
+
+/* Everything here is worth doing to a dozen quotations at once and
+   nothing here needs a decision per quotation: sending to production
+   books each job at the figure that was quoted, which is what
+   approving one by one with the amount left alone already does. A
+   quotation that cannot take an action is skipped rather than
+   refused, so one draft in a batch of sent ones does not stop it. */
+async function runBulk(act, ctx) {
+  const ids = [...selected];
+  if (act === 'clear') { selected.clear(); return ctx.refresh(); }
+  if (!ids.length) return;
+  haptic();
+
+  if (act === 'del') {
+    const ok = await confirmSheet({
+      title: `Delete ${ids.length} quotation${ids.length === 1 ? '' : 's'}?`,
+      message: 'Only the selected revisions go. Other rounds of the same MR numbers are left alone.',
+      confirmLabel: 'Delete', danger: true,
+    });
+    if (!ok) return;
+    ids.forEach(deleteQuote);
+    selected.clear();
+    toast(`${ids.length} deleted`);
+    return ctx.refresh();
+  }
+
+  if (act === 'pdf') {
+    let made = 0;
+    for (const id of ids) {
+      const q = getQuote(id);
+      if (!q) continue;
+      try { await downloadQuotePdf(q); made += 1; } catch {}
+    }
+    toast(made ? `${made} PDF${made === 1 ? '' : 's'} saved` : 'Could not make those PDFs', made ? '' : 'err');
+    return;
+  }
+
+  let done = 0;
+  for (const id of ids) {
+    const q = getQuote(id);
+    if (!q) continue;
+    if (act === 'sent') {
+      if (q.status !== 'draft') continue;
+      setStatus(id, 'sent'); done += 1;
+    } else if (act === 'produce') {
+      if (q.status === 'accepted') continue;
+      acceptQuote(id); done += 1;
+    } else if (act === 'archive') {
+      if (isArchived(q)) continue;
+      archiveQuote(id); done += 1;
+    }
+  }
+  selected.clear();
+  const said = {
+    sent: `${done} marked sent`,
+    produce: `${done} sent to production`,
+    archive: `${done} archived`,
+  };
+  toast(done ? said[act] : 'Nothing in that selection could take it');
+  ctx.refresh();
 }
 
 /* ── One line per job ────────────────────────────────────────────
@@ -229,6 +459,7 @@ function row({ head: q, family, revisions }) {
 
   return `
     <article class="qrow2 reveal" data-open="${esc(q.id)}" tabindex="0" role="button">
+      ${checkbox(q.id, `Select ${q.mrNo}`)}
       <div class="qrow2-main">
         <div class="qrow2-top">
           <span class="qrow2-client">${esc(quoteName(q))}</span>
@@ -266,7 +497,7 @@ function row({ head: q, family, revisions }) {
         <span class="qrow2-amt num">${inr(jobValue)}</span>
         <div class="qrow2-acts">
           <button class="icon-btn plain sm" data-edit="${esc(q.id)}" aria-label="Edit this quotation">${icon('edit', 16)}</button>
-          <button class="icon-btn plain sm" data-more="${esc(q.id)}" aria-label="More actions">${icon('filter', 16)}</button>
+          <button class="icon-btn plain sm" data-more="${esc(q.id)}" aria-label="More actions">${icon('menu', 16)}</button>
         </div>
       </div>
     </article>
