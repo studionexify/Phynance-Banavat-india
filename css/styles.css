@@ -2959,3 +2959,46 @@ body.nav-open .nav-scrim { opacity:1; visibility:visible; pointer-events:auto; }
    unless told otherwise, which put the caption alongside the title. */
 .vcard-txt, .prow-txt { display:flex; flex-direction:column; }
 .vcard-n, .vcard-s, .prow-t, .prow-s { display:block; }
+
+/* ── Quotation list: line items, not cards ──────────────────────
+   One row per job: who and what on the left, the total and the one
+   action a row earns on the right. Earlier rounds still fold under
+   it, the way they did as a card. */
+.qrows { display:flex; flex-direction:column; gap:8px; }
+.qrow2 {
+  display:flex; align-items:center; gap:12px; width:100%; min-width:0;
+  padding:13px 14px; border-radius:16px; text-align:left; cursor:pointer;
+  background:var(--paper); border:1px solid var(--line-soft);
+  box-shadow:var(--e1);
+  transition:transform .12s var(--ease), box-shadow var(--t-fast);
+}
+.qrow2:active { transform:scale(.99); }
+.qrow2:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+@media (hover:hover) and (pointer:fine) {
+  .qrow2:hover { box-shadow:var(--e2); }
+}
+.qrow2-main { flex:1; min-width:0; }
+.qrow2-top { display:flex; align-items:center; gap:8px; }
+.qrow2-client {
+  font-size:14.5px; font-weight:700; color:var(--ink); letter-spacing:-.1px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
+}
+.qrow2-meta {
+  display:flex; align-items:center; flex-wrap:wrap; gap:5px;
+  margin-top:3px; font-size:12px; color:var(--ink-3);
+}
+.qrow2-side { display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex:none; }
+.qrow2-amt { font-size:14.5px; font-weight:700; color:var(--ink); letter-spacing:-.2px; white-space:nowrap; }
+.qrow2-acts { display:flex; align-items:center; gap:6px; }
+.icon-btn.sm { width:32px; height:32px; border-radius:10px; }
+
+/* ── The sort control in the section's own headline ─────────── */
+.sortbar { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.sortbtn {
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:12px; font-weight:600; color:var(--ink-3);
+  padding:5px 9px; border-radius:999px;
+  transition:background var(--t-fast), color var(--t-fast);
+}
+.sortbtn.on { background:var(--tea-soft); color:var(--ink); }
+.sortbtn svg { flex:none; }

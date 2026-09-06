@@ -166,8 +166,8 @@ export function docHTML(q) {
             <th class="c-dim">Dimensions</th>
             <th class="c-num">Unit Price</th>
             <th class="c-num">Quantity</th>
-            <th class="c-num">Amount</th>
-            ${lineItemGst ? `<th class="c-num">GST (${q.gstRate}%)</th><th class="c-num">Line Total</th>` : ''}
+            <th class="c-num">${lineItemGst ? 'Sub-Total' : 'Total'}</th>
+            ${lineItemGst ? `<th class="c-num">GST (${q.gstRate}%)</th><th class="c-num">Total</th>` : ''}
           </tr>
         </thead>
         <tbody>

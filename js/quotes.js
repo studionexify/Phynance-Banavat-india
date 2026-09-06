@@ -59,13 +59,18 @@ export function baseNo(mrNo) {
 
 /* The name a quotation goes by everywhere it is listed: the number
    that identifies the document, and the client it was written for.
-   "C135 - Rahi Construction" is how the business already says it out
-   loud, so it is how the card, the sheet title and the file name say
-   it too — nowhere is left showing the number alone. */
+   The base document reads "C101 Rahi Construction" — no separator
+   between the number and the name, the way the business already
+   says it out loud. A revision's own suffix gets its dash back
+   *before* the client, so the number that changed stays legible:
+   "C101 - 1 Rahi Construction" is revision 1 of that same job. */
 export function quoteName(q) {
   if (!q) return '';
-  const client = (q.client && q.client.name || '').trim();
-  return client ? `${q.mrNo} - ${client}` : `${q.mrNo} - Unnamed client`;
+  const client = (q.client && q.client.name || '').trim() || 'Unnamed client';
+  const mrNo = String(q.mrNo || '');
+  const dash = mrNo.indexOf('-');
+  if (dash === -1) return `${mrNo} ${client}`;
+  return `${mrNo.slice(0, dash)} - ${mrNo.slice(dash + 1)} ${client}`;
 }
 
 /* Two ways of printing the same tax. "Total" foots the whole
@@ -255,6 +260,25 @@ function write() {
 }
 
 export function load() { state = read(); return state; }
+
+/* A handful of quotations came in through importHistory() before the
+   clash-suffix moved off "#" onto "(2)" — see addLine's own note by
+   the generator. Rewriting mrNo alone, without a fresh updatedAt,
+   would never leave this device: quotesync's push() only sends a
+   record whose updatedAt has actually moved, so a silent field edit
+   here would fix the number locally and nowhere else. Runs once per
+   boot; a no-op once no live quote still carries the old mark. */
+export function fixHashtagNumbers() {
+  let changed = 0;
+  for (const q of state.quotes) {
+    if (!q.mrNo || !q.mrNo.includes('#')) continue;
+    q.mrNo = q.mrNo.replace(/#(\d+)/, ' ($1)');
+    q.updatedAt = Date.now();
+    changed++;
+  }
+  if (changed) { write(); emit(); }
+  return { changed };
+}
 export function raw() { return state; }
 export function settings() { return state.settings; }
 
@@ -855,7 +879,7 @@ export async function importHistory(rows) {
      record again under a fresh suffix. */
   const worth = (ls) => (ls || []).reduce((t, l) => t + (l.unitPrice || 0) * (l.qty || 0), 0);
   const identity = (q) => [
-    String(q.mrNo || '').toUpperCase().split('#')[0],
+    String(q.mrNo || '').toUpperCase().replace(/\s*\(\d+\)$/, ''),
     q.date || '',
     String((q.client || {}).name || '').trim().toLowerCase(),
     // The sheet holds two different C131s for one client on one day.
@@ -878,11 +902,14 @@ export async function importHistory(rows) {
 
     // A number the sheet reused for a different client comes in under
     // a suffix so both survive; the flag is what tells you to settle it.
+    // Parenthesised rather than dashed on purpose — a dash reads as a
+    // revision of the same job (see quoteName()) and would pull this
+    // unrelated duplicate into that job's own family and history.
     let useNo = mrNo;
     if (numbers.has(useNo)) {
       let n = 2;
-      while (numbers.has(`${mrNo}#${n}`)) n += 1;
-      useNo = `${mrNo}#${n}`;
+      while (numbers.has(`${mrNo} (${n})`)) n += 1;
+      useNo = `${mrNo} (${n})`;
     }
 
     // Everything in the sheet went out to a client; what came back of

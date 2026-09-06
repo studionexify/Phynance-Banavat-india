@@ -12,6 +12,7 @@ const P = {
   close:     '<path d="M18 6 6 18M6 6l12 12"/>',
   chevR:     '<path d="M9 18l6-6-6-6"/>',
   chevD:     '<path d="M6 9l6 6 6-6"/>',
+  chevU:     '<path d="M6 15l6-6 6 6"/>',
   arrowIn:   '<path d="M12 5v14"/><path d="m5 12 7 7 7-7"/>',
   arrowOut:  '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
   swap:      '<path d="M7 4v13"/><path d="m4 14 3 3 3-3"/><path d="M17 20V7"/><path d="m14 10 3-3 3 3"/>',
