@@ -942,6 +942,25 @@ export function recentQuotes(limit = 5) {
   return state.quotes.filter((x) => !x.deletedAt).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
 }
 
+/* The three figures the Quotations topbar and the Dashboard both
+   want: confirmed jobs still in hand, what they are worth, and how
+   many are still waiting on a client's word. One pass over every
+   family, live or archived, since an accepted job is archived the
+   moment it is decided. */
+export function quotationStats() {
+  const families = quoteFamilies({ archived: null });
+  let activeCount = 0, activeValue = 0, openCount = 0;
+  for (const { head } of families) {
+    if (head.status === 'accepted') {
+      activeCount++;
+      activeValue += jobValueFor(head);
+    } else if (head.status === 'draft' || head.status === 'sent') {
+      openCount++;
+    }
+  }
+  return { activeCount, activeValue: round2(activeValue), openCount };
+}
+
 
 /* ── The sync surface ──────────────────────────────────────────
    Everything js/quotesync.js needs and nothing more. Quotations keep
