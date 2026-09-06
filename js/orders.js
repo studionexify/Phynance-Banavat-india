@@ -168,7 +168,93 @@ export function isOverdue(group) {
   return Boolean(group.deliveryDate) && group.deliveryDate < todayISO();
 }
 
+/* ── The stations on the line ──────────────────────────────────
+   Which screen a piece shows up on is decided by one thing — how
+   far along it is — so the mapping lives here rather than being
+   re-derived, differently, on five different screens. A piece is
+   only ever at one station, and every stage belongs to exactly
+   one, so nothing can fall between them or appear on two. */
+
+export const STATION = {
+  inproduction: ['pending', 'drawings', 'commission', 'production'],
+  qc:           ['assembly'],
+  shipping:     ['shipped'],
+  archive:      ['delivered'],
+};
+
+export const STATION_LABEL = {
+  inproduction: 'In production',
+  qc: 'QC',
+  shipping: 'Shipping',
+  archive: 'Archive',
+};
+
+export function stationOf(stage) {
+  for (const [name, stages] of Object.entries(STATION)) {
+    if (stages.includes(stage)) return name;
+  }
+  return 'inproduction';
+}
+
+/** Every MR group standing at one station, newest delivery first. */
+export function groupsAt(station, { q = '' } = {}) {
+  const stages = STATION[station] || [];
+  return orderGroups({ q }).filter((g) => stages.includes(g.stage));
+}
+
+/** Every individual piece at one station — the pieces themselves,
+    not their orders, for the screens that work at that grain. */
+export function linesAt(station) {
+  const stages = STATION[station] || [];
+  return lines().filter((l) => stages.includes(l.stage));
+}
+
+/* ── The sub-contractor book ───────────────────────────────────
+   Nobody types a supplier list: it is read back out of the work
+   itself, the same way the client book is read out of past
+   quotations. Whoever is named against a piece is a
+   sub-contractor, and the trades they are named for are the
+   trades they do. */
+
+const TRADES = ['drawings', 'metal', 'wood', 'upholstery', 'marble', 'hardware', 'package'];
+
+export function vendorBook() {
+  const book = new Map();
+  for (const l of lines()) {
+    for (const trade of TRADES) {
+      const name = (l.vendors && l.vendors[trade] || '').trim();
+      if (!name || name.toUpperCase() === 'NA') continue;
+      if (!book.has(name)) book.set(name, { name, trades: new Set(), lines: [] });
+      const v = book.get(name);
+      v.trades.add(trade);
+      if (!v.lines.includes(l)) v.lines.push(l);
+    }
+  }
+  return [...book.values()]
+    .map((v) => ({
+      ...v,
+      trades: [...v.trades],
+      open: v.lines.filter((l) => l.stage !== 'delivered').length,
+    }))
+    .sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
+}
+
+export function vendorNamed(name) {
+  return vendorBook().find((v) => v.name === name) || null;
+}
+
 /* ── Dashboard / topbar figures ───────────────────────────────── */
+
+/** How many orders are standing at each station right now. */
+export function stationCounts() {
+  const groups = orderGroups({});
+  const out = { inproduction: 0, qc: 0, shipping: 0, archive: 0, overdue: 0 };
+  for (const g of groups) {
+    out[stationOf(g.stage)] += 1;
+    if (isOverdue(g)) out.overdue += 1;
+  }
+  return out;
+}
 
 export function orderStats() {
   const groups = orderGroups({});

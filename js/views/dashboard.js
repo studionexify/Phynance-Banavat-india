@@ -1,11 +1,16 @@
-/* views/dashboard.js — Kontour's own screen.
+/* views/dashboard.js — the whole floor on one screen.
  *
- * Not a fifth copy of the money log. The Dashboard answers one
- * question — what needs me today — and it answers it with the same
- * nine figures the three modules already open with, in one place,
- * each one a door back to the screen that owns it. Nothing here can
- * be edited in place; that is the point. You look, you decide where
- * to go.
+ * Not a fifth copy of anything. The Dashboard answers one question —
+ * what needs me today — by carrying each station's own headline
+ * figure and nothing else, with a way through to the screen that
+ * owns it. Every number here is computed by the module it belongs
+ * to, never re-derived, so the Dashboard cannot disagree with the
+ * screen it links to.
+ *
+ * What needs attention comes first and what is merely true comes
+ * after: an overdue order is a different kind of fact from a
+ * turnover figure, and putting them in one undifferentiated grid
+ * makes both easier to miss.
  */
 
 import { icon } from '../icons.js';
@@ -13,60 +18,82 @@ import { on, esc } from '../ui.js';
 import { phynanceStats } from '../store.js';
 import { quotationStats } from '../quotes.js';
 import { totalSummary, seedKnownPartners } from '../commissions.js';
-import { inrShort, todayISO, fyOf } from '../format.js';
+import {
+  stationCounts, groupsAt, orderGroups, isOverdue, stageLabel, seedOrders,
+} from '../orders.js';
+import { todayISO, fyOf, dmy } from '../format.js';
+import { pageHead, statCards, sectionHead, orderCard, nothingHere } from './chrome.js';
+import { openOrder } from './orderdetail.js';
 
-export async function render(root, ctx) {
-  const today = todayISO();
+export function render(root, ctx) {
+  seedOrders();
   seedKnownPartners();
 
-  const p = phynanceStats();
+  const today = todayISO();
+  const st = stationCounts();
   const q = quotationStats();
+  const p = phynanceStats();
   const c = totalSummary();
 
-  const cards = [
-    // Phynance
-    { go: 'home', ico: 'arrowIn', label: 'Outstanding', val: p.outstanding },
-    { go: 'home', ico: 'arrowOut', label: 'Vendor Payment', val: p.vendorPayment },
-    { go: 'home', ico: 'wallet', label: 'Turn Over', val: p.turnover },
-    // Quotation
-    { go: 'quotes', ico: 'note', label: 'Active Order', val: q.activeCount, plain: true },
-    { go: 'quotes', ico: 'note', label: 'Active Order Value', val: q.activeValue },
-    { go: 'quotes', ico: 'note', label: 'Open Quotations', val: q.openCount, plain: true },
-    // Commission
-    { go: 'commission', ico: 'percent', label: 'Total Earned', val: c.commission },
-    { go: 'commission', ico: 'percent', label: 'Paid Out', val: c.paid },
-    { go: 'commission', ico: 'percent', label: 'Outstanding', val: c.remaining },
-  ];
+  const overdue = orderGroups({}).filter(isOverdue)
+    .sort((a, b) => (a.deliveryDate || '').localeCompare(b.deliveryDate || ''));
+  const dueSoon = groupsAt('inproduction', {})
+    .filter((g) => !isOverdue(g) && g.deliveryDate)
+    .sort((a, b) => a.deliveryDate.localeCompare(b.deliveryDate))
+    .slice(0, 4);
 
   root.innerHTML = `
-    <header class="hero">
-      <div class="hero-bar">
-        <div class="hero-title">
-          Dashboard
-          <small>Banavat India · ${esc(fyOf(today))}</small>
-        </div>
-        <button class="icon-btn" data-settings aria-label="Settings">${icon('gear', 21)}</button>
-      </div>
-    </header>
+    <div class="floor">
+      ${pageHead({
+        title: 'Banavat India',
+        sub: `The floor today · ${esc(fyOf(today))}`,
+        actions: `<button class="pill-btn" data-go="quotes">${icon('plus', 16)} New quotation</button>`,
+      })}
 
-    <div class="sec" style="padding-top:16px">
-      <div class="grid3">
-        ${cards.map(cardHTML).join('')}
-      </div>
-    </div>
-  `;
+      ${sectionHead('The line')}
+      ${statCards([
+        { label: 'Open quotations', value: q.openCount, tone: 'quote', go: 'quotes', hint: 'awaiting a decision' },
+        { label: 'In production', value: st.inproduction, tone: 'prod', go: 'inproduction', hint: 'on the floor' },
+        { label: 'Awaiting QC', value: st.qc, tone: 'qc', go: 'qc', hint: 'at assembly' },
+        { label: 'Shipping', value: st.shipping, tone: 'ship', go: 'shipping', hint: 'out for delivery' },
+      ])}
 
-  on(root, '[data-settings]', () => ctx.openSettings());
+      ${statCards([
+        { label: 'Active orders', value: q.activeCount, go: 'quotes', hint: 'confirmed' },
+        { label: 'Active order value', value: q.activeValue || '', money: Boolean(q.activeValue), go: 'quotes' },
+        { label: 'Overdue', value: st.overdue, tone: st.overdue ? 'sub' : '', go: 'inproduction', hint: st.overdue ? 'past delivery date' : 'nothing late' },
+        { label: 'Completed', value: st.archive, tone: 'done', go: 'archive', hint: 'in the archive' },
+      ])}
+
+      ${sectionHead('Money')}
+      ${statCards([
+        { label: 'Outstanding', value: p.outstanding || '', money: Boolean(p.outstanding), go: 'home', hint: 'to collect' },
+        { label: 'Vendor payment', value: p.vendorPayment || '', money: Boolean(p.vendorPayment), go: 'home', hint: 'not tracked yet' },
+        { label: 'Turn over', value: p.turnover || '', money: Boolean(p.turnover), go: 'home', hint: esc(fyOf(today)) },
+        { label: 'Commission owed', value: c.remaining || '', money: Boolean(c.remaining), go: 'commission', hint: `${c.paid ? 'paid ₹' + Math.round(c.paid).toLocaleString('en-IN') : 'nothing paid yet'}` },
+      ])}
+
+      ${overdue.length ? `
+        ${sectionHead('Running late', `<button class="sec-link" data-go="inproduction">Open ${icon('chevR', 13)}</button>`)}
+        <div class="olist">${overdue.slice(0, 4).map((g) => row(g, true)).join('')}</div>
+      ` : ''}
+
+      ${sectionHead('Due next', `<button class="sec-link" data-go="inproduction">Open ${icon('chevR', 13)}</button>`)}
+      ${dueSoon.length ? `<div class="olist">${dueSoon.map((g) => row(g, false)).join('')}</div>`
+        : nothingHere('anvil', 'Nothing scheduled', 'Approved quotations arrive in production')}
+    </div>`;
+
   on(root, '[data-go]', (e, b) => ctx.go(b.dataset.go));
+  on(root, '[data-open]', (e, b) => openOrder(b.dataset.open, ctx.refresh));
 }
 
-function cardHTML(c) {
-  const shown = c.val ? (c.plain ? String(c.val) : inrShort(c.val)) : '—';
-  return `
-    <button class="card" data-go="${esc(c.go)}">
-      <span class="card-ico">${icon(c.ico, 16)}</span>
-      <div class="card-name">${esc(c.label)}</div>
-      <div class="card-val num">${esc(shown)}</div>
-    </button>
-  `;
+function row(g, late) {
+  const meta = [`${g.lines.length} piece${g.lines.length === 1 ? '' : 's'}`];
+  if (g.deliveryDate) meta.push(`${late ? 'was due' : 'due'} ${dmy(g.deliveryDate)}`);
+  return orderCard({
+    id: g.mrNo, mrNo: g.mrNo, client: g.client, meta,
+    tint: late ? 'sub' : 'prod',
+    pill: late ? 'Overdue' : stageLabel(g.stage),
+    pillTone: late ? 'out' : 'warn',
+  });
 }
