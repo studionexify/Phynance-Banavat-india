@@ -473,7 +473,7 @@ export function ensureJob(code, { silent = false, title = '', client = '' } = {}
   const s = load();
   let j = s.jobs.find((x) => x.code === c);
   if (!j) {
-    j = { code: c, title, client, orderValue: 0, archived: false, createdAt: Date.now(), lastUsed: Date.now() };
+    j = { code: c, title, client, orderValue: 0, archived: false, stage: 'production', createdAt: Date.now(), lastUsed: Date.now() };
     s.jobs.push(j);
   } else {
     j.lastUsed = Date.now();
