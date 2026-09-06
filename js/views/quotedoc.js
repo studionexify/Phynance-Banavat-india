@@ -27,7 +27,7 @@ import {
 import { inr, dmy } from '../format.js';
 import { markHTML, hasLogo } from '../brand.js';
 
-export function openQuoteDoc(id, { onSaved } = {}) {
+export function openQuoteDoc(id, { onSaved, review = false, onApprove } = {}) {
   const q = getQuote(id);
   if (!q) return;
 
@@ -35,7 +35,7 @@ export function openQuoteDoc(id, { onSaved } = {}) {
     title: quoteName(q),
     full: true,
     wide: true,
-    headRight: `
+    headRight: review ? '' : `
       <div class="sheet-head-acts">
         <button class="icon-btn plain" data-print aria-label="Print">${icon('reports', 20)}</button>
         <button class="icon-btn plain" data-edit aria-label="Edit">${icon('edit', 19)}</button>
@@ -45,12 +45,27 @@ export function openQuoteDoc(id, { onSaved } = {}) {
         <div class="qb-scroll doc-scroll">${docHTML(q)}</div>
         <footer class="qb-foot">
           <div class="qb-acts">
-            <button class="act" data-pdf aria-label="Download as PDF">${icon('download', 18)}<span>PDF</span></button>
-            <button class="btn sm grow" data-share>${icon('upload', 17)} Share with client</button>
+            ${review ? `
+              <button class="btn sm ghost" data-back>${icon('back', 16)} Back</button>
+              <button class="btn sm grow ok" data-approve>Done</button>
+            ` : `
+              <button class="act" data-pdf aria-label="Download as PDF">${icon('download', 18)}<span>PDF</span></button>
+              <button class="btn sm grow" data-share>${icon('upload', 17)} Share with client</button>
+            `}
           </div>
         </footer>
       </div>`,
     onMount(root) {
+      if (review) {
+        on(root, '[data-back]', () => h.close());
+        on(root, '[data-approve]', () => {
+          h.close();
+          if (onApprove) onApprove();
+        });
+        on(root, '[data-zoom]', (e, b) => openLightbox(b.dataset.zoom, b.dataset.zoomCaption));
+        return;
+      }
+
       on(root, '[data-pdf]', async () => {
         try { await downloadQuotePdf(q); toast('PDF saved'); }
         catch { toast('Could not make that PDF', 'err'); }

@@ -1058,6 +1058,11 @@ select.control { padding-right:34px; background-position:right 13px center; back
   box-shadow:inset 0 1px 0 rgba(255,255,255,.8);
 }
 .btn.danger { background:var(--out-soft); color:var(--out); box-shadow:none; }
+.btn.ghost {
+  background:transparent; color:var(--pine-700); box-shadow:none;
+  border:1.5px solid var(--line);
+}
+.btn.ok { background:#0b6b45; color:#fff; box-shadow:0 6px 20px -6px rgba(11,107,69,.5); }
 .btn.sm { padding:12px; font-size:14px; margin-top:10px; }
 
 /* photo */
@@ -1958,6 +1963,7 @@ select.control { padding-right:34px; background-position:right 13px center; back
 .qb-acts { display:flex; align-items:stretch; flex-wrap:wrap; gap:8px; margin-top:11px; }
 .qb-acts .act { min-height:46px; }
 .qb-acts .btn.sm.grow { flex:2 1 140px; min-width:0; margin:0; }
+.qb-acts .btn.sm.ghost { flex:1 1 90px; min-width:0; margin:0; }
 
 .qb-none {
   text-align:center; padding:26px 18px; color:var(--ink-3);
@@ -1990,8 +1996,13 @@ select.control { padding-right:34px; background-position:right 13px center; back
 .control.flush:focus { border-color:var(--pine-500); background:var(--paper); }
 
 .qline-kind { display:flex; align-items:center; gap:6px; margin-top:10px; flex-wrap:wrap; }
-.seg.wide { display:flex; gap:6px; margin-top:2px; }
-.seg.wide .seg-mini { flex:1; text-align:center; }
+/* A row of seg-mini pills. Deliberately not named with "seg" — sharing
+   that class with the underline tab-switcher above let its rules (the
+   glowing underline, the 14.5px font, the 150px max-width) bleed onto
+   these pill buttons, since both are plain <button> elements inside a
+   same-named ancestor. */
+.segbar { display:flex; gap:6px; margin-top:2px; }
+.segbar .seg-mini { flex:1; text-align:center; }
 .seg-mini {
   padding:6px 13px; border-radius:999px;
   font-size:12px; font-weight:600;
@@ -2012,6 +2023,17 @@ select.control { padding-right:34px; background-position:right 13px center; back
 }
 .qline-dims label.grow, .qline-money label.grow { flex:1; min-width:130px; }
 .mini-in { width:88px; padding:8px 10px; font-size:13.5px; }
+
+/* A rupee amount field: the ₹ overlays the input's own left padding,
+   so it reads as money at a glance — distinct from a plain qty or
+   rate-% field next to it — without doubling up the control's own
+   border and background inside a second box. */
+.money-in { position:relative; display:inline-flex; }
+.money-in .cur {
+  position:absolute; left:9px; top:50%; transform:translateY(-50%);
+  font-size:12.5px; font-weight:600; color:var(--ink-3); pointer-events:none;
+}
+.money-in .control { padding-left:20px; }
 .qline-dims label.grow .mini-in,
 .qline-money label.grow .mini-in { width:100%; }
 
@@ -2144,12 +2166,22 @@ select.control { padding-right:34px; background-position:right 13px center; back
    own theme deliberately stops at its edge.
    ════════════════════════════════════════════════════════════ */
 
-.doc-scroll { background:var(--k-100); padding:16px; }
+/* Deliberately not responsive: this is a preview of the exported
+   file, not a screen of its own, so it holds one true size — roughly
+   A4 at 96dpi, the same proportions the PDF and the print output
+   already use — on every device. A phone gets it exactly as small as
+   a phone screen makes an A4 page look, scrolling and pinch-zooming
+   to read it, rather than a reflowed layout that never matches what
+   actually gets downloaded or shared. */
+.doc-scroll {
+  background:var(--k-100); padding:16px;
+  overflow:auto; -webkit-overflow-scrolling:touch;
+}
 
 .doc {
   background:#FFFFFF;
   color:#111113;
-  max-width:900px;
+  width:794px;
   margin:0 auto;
   padding:34px 32px 40px;
   border-radius:6px;
@@ -2165,10 +2197,9 @@ select.control { padding-right:34px; background-position:right 13px center; back
 }
 
 .doc-meta {
-  display:grid; grid-template-columns:1fr; gap:2px 40px;
+  display:grid; grid-template-columns:1fr 1fr; gap:2px 40px;
   margin-bottom:20px;
 }
-@media (min-width:640px) { .doc-meta { grid-template-columns:1fr 1fr; } }
 .doc-meta dl { margin:0; display:flex; flex-direction:column; gap:3px; }
 .doc-meta div { display:flex; gap:8px; }
 .doc-meta dt { margin:0; font-weight:700; flex:none; min-width:118px; }
