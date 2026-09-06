@@ -35,6 +35,7 @@
 
 import { uid, ensureJob, updateJob } from './store.js';
 import { todayISO, round2, fyStartYear } from './format.js';
+import { DEFAULT_LOGO } from './default-logo.js';
 
 const KEY = 'kontour.quotes.v2';
 
@@ -177,8 +178,10 @@ function blank() {
       // shipped as a repo asset so it travels in a backup, works with
       // no network, and can be changed without a deploy. Everything
       // that shows the brand — the document, the rail, the lock
-      // screen — reads this one value.
-      logo: '',
+      // screen — reads this one value. Defaults to the Banavat India
+      // logo so it appears out of the box; uploading a different logo
+      // in Settings overrides this default.
+      logo: DEFAULT_LOGO,
       bank: { ...BANK },
       seq: 0,
     },
