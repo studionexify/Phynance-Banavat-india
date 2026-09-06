@@ -1771,7 +1771,7 @@ select.control { padding-right:34px; background-position:right 13px center; back
   display:flex; flex-direction:column; gap:9px;
   padding:16px; border-radius:var(--r-lg);
   background:var(--grad-card); border:1px solid var(--line-soft);
-  box-shadow:var(--e1); text-align:left; width:100%;
+  box-shadow:var(--e1); text-align:left; width:100%; min-width:0;
   cursor:pointer;
   transition:transform .14s var(--ease), box-shadow var(--t-fast);
 }
