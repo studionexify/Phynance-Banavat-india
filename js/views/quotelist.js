@@ -16,8 +16,8 @@ import { icon } from '../icons.js';
 import { on, esc, emptyState, toast, confirmSheet, field, openSheet, haptic } from '../ui.js';
 import {
   quoteFamilies, quoteTotals, quoteName, STATUS, setStatus, deleteQuote, getQuote,
-  reviseQuote, duplicateQuote, pipelineValue, archiveQuote, unarchiveQuote, isArchived,
-  jobValueFor,
+  reviseQuote, duplicateQuote, archiveQuote, unarchiveQuote, isArchived,
+  jobValueFor, quotationStats,
 } from '../quotes.js';
 import { inr, dmy, fyOf } from '../format.js';
 import { openQuoteSheet } from './quotebuilder.js';
@@ -43,7 +43,7 @@ export function setFilter(next) {
 export async function render(root, ctx) {
   const inFy = (f) => fy === 'all' || fyOf(f.head.date) === fy;
   const list = quoteFamilies({ status: filter, q: query, archived }).filter(inFy);
-  const pipeline = pipelineValue();
+  const qs = quotationStats();
   const all = quoteFamilies({ q: query, archived }).filter(inFy);
   const archivedCount = quoteFamilies({ q: query, archived: true }).filter(inFy).length;
   // Newest year first, and only offered once there is more than one.
@@ -67,16 +67,16 @@ export async function render(root, ctx) {
       </div>
       <div class="stat-row">
         <div class="stat">
-          <div class="stat-val num" ${pipeline ? `data-count="${pipeline}" data-fmt="short"` : ''}>${pipeline ? '' : '—'}</div>
-          <div class="stat-lbl">OPEN VALUE</div>
+          <div class="stat-val num">${qs.activeCount}</div>
+          <div class="stat-lbl">ACTIVE ORDER</div>
         </div>
         <div class="stat">
-          <div class="stat-val num">${archived ? counts.accepted : counts.sent}</div>
-          <div class="stat-lbl">${archived ? 'ACCEPTED' : 'AWAITING REPLY'}</div>
+          <div class="stat-val num" ${qs.activeValue ? `data-count="${qs.activeValue}" data-fmt="short"` : ''}>${qs.activeValue ? '' : '—'}</div>
+          <div class="stat-lbl">ACTIVE ORDER VALUE</div>
         </div>
         <div class="stat">
-          <div class="stat-val num">${archived ? counts.declined : counts.draft}</div>
-          <div class="stat-lbl">${archived ? 'DECLINED' : 'DRAFTS'}</div>
+          <div class="stat-val num">${qs.openCount}</div>
+          <div class="stat-lbl">OPEN QUOTATIONS</div>
         </div>
       </div>
     </header>

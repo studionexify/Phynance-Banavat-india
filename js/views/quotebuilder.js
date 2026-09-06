@@ -16,16 +16,15 @@
  */
 
 import { icon } from '../icons.js';
-import { openSheet, on, esc, toast, emptyState, haptic } from '../ui.js';
+import { openSheet, on, esc, toast, emptyState } from '../ui.js';
 import {
   getQuote, addQuote, updateQuote, newLine, newShipping, lineAmount, quoteTotals,
   LINE_KINDS, GST_MODES, designs, getDesign, lineFromDesign, mrNoTaken, defaultValidUntil,
   quoteName, clientBook, findClient, leadTimeRangeText,
 } from '../quotes.js';
 import { pickImage, shrink, toBase64 } from '../photos.js';
-import { inr, todayISO } from '../format.js';
+import { inr, num, parseNum, todayISO } from '../format.js';
 import { openQuoteDoc } from './quotedoc.js';
-import { shareQuotePdf, downloadQuotePdf } from '../quotepdf.js';
 
 export function openQuoteSheet({ id = '', onSaved } = {}) {
   let quote = id ? getQuote(id) : null;
@@ -39,7 +38,6 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
     title: quoteName(quote),
     full: true,
     wide: true,
-    headRight: `<button class="icon-btn plain" data-preview aria-label="Preview document">${icon('note', 20)}</button>`,
     body: `<div class="qb" data-qb></div>`,
     onMount(root, handle) {
       const host = root.querySelector('[data-qb]');
@@ -85,7 +83,30 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
 
       /* Delegated once on the host, so a repaint of any region never
          stacks a second copy of these handlers. */
+      /* A money field (data-money) reads back as digits, whatever
+         commas or the ₹ mark next to it are doing to the display —
+         everything else keeps the old number-vs-text split. */
+      function readVal(inp) {
+        if (inp.dataset.money !== undefined) return parseNum(inp.value);
+        return inp.type === 'number' ? Number(inp.value) || 0 : inp.value;
+      }
+
       function bindOnce() {
+        /* A money field shows "₹16,300" at rest. Tapping in clears a
+           genuine zero outright (a fresh line's rate must not turn a
+           first keystroke into "01,300"), or strips the field to bare
+           digits and selects them so typing over an existing figure
+           is a single keystroke, not a delete-then-type. Both are
+           undone on blur once the value has committed, by the
+           `change` handler below writing the formatted string back. */
+        host.addEventListener('focus', (e) => {
+          const inp = e.target;
+          if (inp.dataset.money === undefined) return;
+          const n = parseNum(inp.value);
+          inp.value = n ? String(n) : '';
+          if (n) inp.select();
+        }, true);
+
         // `toggle` does not bubble, so the disclosure state is caught
         // on the way down instead — a repaint would otherwise snap
         // every open line shut.
@@ -119,7 +140,8 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
           }
 
           if (d.f != null) {
-            const val = inp.type === 'number' ? Number(inp.value) || 0 : inp.value;
+            const val = readVal(inp);
+            if (inp.dataset.money !== undefined) inp.value = val ? num(val) : '';
             if (d.f.startsWith('client.')) {
               // The block is not redrawn — the field already holds what
               // was typed, and redrawing would move the caret out from
@@ -141,9 +163,9 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
           }
 
           if (d.l) {
-            const lines = quote.lines.map((l) => l.id !== d.l ? l : {
-              ...l, [d.k]: inp.type === 'number' ? Number(inp.value) || 0 : inp.value,
-            });
+            const val = readVal(inp);
+            if (inp.dataset.money !== undefined) inp.value = val ? num(val) : '';
+            const lines = quote.lines.map((l) => l.id !== d.l ? l : { ...l, [d.k]: val });
             quote = updateQuote(quote.id, { lines });
             const row = inp.closest('.qline');
             const amt = row && row.querySelector('.qline-amt');
@@ -154,19 +176,20 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
           }
 
           if (d.s) {
-            const shipping = quote.shipping.map((x) => x.id !== d.s ? x : {
-              ...x, [d.k]: inp.type === 'number' ? Number(inp.value) || 0 : inp.value,
-            });
+            const val = readVal(inp);
+            if (inp.dataset.money !== undefined) inp.value = val ? num(val) : '';
+            const shipping = quote.shipping.map((x) => x.id !== d.s ? x : { ...x, [d.k]: val });
             quote = updateQuote(quote.id, { shipping });
             renderFoot();
           }
         });
 
-        /* Typing a name already on file fills in what was saved for
-           them last time — only into fields still blank, so it never
-           overwrites something already typed for this quote, and only
-           the two fields it touches, so the name field keeps its
-           caret rather than being wiped by a full repaint. */
+        /* Typing (or picking from the datalist) a name already on file
+           loads that client's profile — phone and city are what was
+           saved for them last time, not whatever a new quote's blank
+           form happened to default to. Only these two fields are
+           touched, so the name field keeps its caret rather than
+           being wiped by a full repaint. */
         host.addEventListener('input', (e) => {
           const inp = e.target;
           if (inp.dataset.f !== 'client.name') return;
@@ -175,14 +198,8 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
           const phoneField = host.querySelector('[data-f="client.phone"]');
           const cityField = host.querySelector('[data-f="client.shippingAddress"]');
           const changes = {};
-          if (phoneField && !phoneField.value.trim() && found.phone) {
-            phoneField.value = found.phone;
-            changes.phone = found.phone;
-          }
-          if (cityField && !cityField.value.trim() && found.shippingAddress) {
-            cityField.value = found.shippingAddress;
-            changes.shippingAddress = found.shippingAddress;
-          }
+          if (phoneField && found.phone) { phoneField.value = found.phone; changes.phone = found.phone; }
+          if (cityField && found.shippingAddress) { cityField.value = found.shippingAddress; changes.shippingAddress = found.shippingAddress; }
           if (Object.keys(changes).length) {
             quote = updateQuote(quote.id, { client: { ...quote.client, ...changes } });
           }
@@ -243,21 +260,12 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
 
         on(host, '[data-brk]', () => { footOpen = !footOpen; renderFoot(); });
 
-        on(host, '[data-share]', async () => {
-          haptic();
-          try {
-            const how = await shareQuotePdf(quote);
-            if (how === 'downloaded') toast('PDF saved — attach it from Downloads');
-            else if (how === 'shared') toast('Shared');
-          } catch { toast('Could not share that', 'err'); }
+        on(host, '[data-preview-btn]', () => {
+          openQuoteDoc(quote.id, {
+            review: true,
+            onApprove: () => { handle.close(); if (onSaved) onSaved(); },
+          });
         });
-
-        on(host, '[data-pdf]', async () => {
-          try { await downloadQuotePdf(quote); toast('PDF saved'); }
-          catch { toast('Could not make that PDF', 'err'); }
-        });
-
-        on(host, '[data-done]', () => { handle.close(); if (onSaved) onSaved(); });
       }
 
       /* The number and the client are both editable, and both are in
@@ -267,7 +275,6 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
         if (h2) h2.textContent = quoteName(quote);
       }
 
-      on(root, '[data-preview]', () => openQuoteDoc(quote.id));
     },
     onClose() { if (onSaved) onSaved(); },
   });
@@ -278,6 +285,21 @@ export function openQuoteSheet({ id = '', onSaved } = {}) {
 /** A label and its control on one line, inside a clustered card. */
 function pair(label, controlHtml) {
   return `<div class="qpair"><span class="qpair-l">${esc(label)}</span>${controlHtml}</div>`;
+}
+
+/* A rupee-styled number field: shows formatted with commas and a ₹
+   mark when not focused, empty rather than a stuck "0" when there is
+   nothing in it yet, and the plain digits while being typed into —
+   see the focus/blur handling in bindOnce(). `attrs` is the raw
+   data-* string that says which field this is (data-l/data-k or
+   data-f), the same convention every other field here already uses. */
+function moneyField(attrs, value, extraClass = '') {
+  return `
+    <span class="money-in ${extraClass}">
+      <span class="cur">₹</span>
+      <input class="control mini-in" type="text" inputmode="decimal" data-money ${attrs}
+             value="${value ? esc(num(value)) : ''}" placeholder="0">
+    </span>`;
 }
 
 /* Client, number and dates as one card of paired rows. The name is
@@ -352,8 +374,7 @@ function lineRow(l, i, open) {
       <div class="qline-money">
         <label class="qmoney">
           <span>Rate</span>
-          <input class="control mini-in" type="number" min="0" inputmode="numeric"
-                 data-l="${esc(l.id)}" data-k="unitPrice" value="${l.unitPrice}">
+          ${moneyField(`data-l="${esc(l.id)}" data-k="unitPrice"`, l.unitPrice)}
         </label>
         ${l.kind === 'unit' ? `
           <label class="qmoney">
@@ -413,7 +434,7 @@ function extrasBlock(q, openPanels) {
           <span class="qdisc-t">GST display</span>
           <span class="qdisc-v">${GST_MODES[q.gstMode].label}</span>
         </summary>
-        <div class="seg wide">
+        <div class="segbar">
           ${Object.entries(GST_MODES).map(([k, v]) => `
             <button class="seg-mini ${q.gstMode === k ? 'on' : ''}" data-gstmode="${k}">${esc(v.label)}</button>
           `).join('')}
@@ -431,8 +452,7 @@ function extrasBlock(q, openPanels) {
           <div class="fin-row">
             <input class="control" data-s="${esc(s.id)}" data-k="label"
                    value="${esc(s.label)}" placeholder="Delivery - Vadodara">
-            <input class="control mini-in" type="number" min="0" inputmode="numeric"
-                   data-s="${esc(s.id)}" data-k="amount" value="${s.amount}">
+            ${moneyField(`data-s="${esc(s.id)}" data-k="amount"`, s.amount)}
             <button class="mini danger" data-rm-ship="${esc(s.id)}" aria-label="Remove row">${icon('trash', 14)}</button>
           </div>
         `).join('')}
@@ -449,7 +469,7 @@ function extrasBlock(q, openPanels) {
           <button class="seg-mini ${q.discountEnabled ? 'on' : ''}" data-discount="${q.discountEnabled ? 'off' : 'on'}">
             ${q.discountEnabled ? 'Applied' : 'Not applied'}
           </button>
-          ${q.discountEnabled ? `<input class="control mini-in" type="number" min="0" inputmode="numeric" data-f="discountAmount" value="${q.discountAmount || 0}">` : ''}
+          ${q.discountEnabled ? moneyField('data-f="discountAmount"', q.discountAmount) : ''}
         </div>
         <p class="qb-hint">A flat amount off the goods total, taken before GST.</p>
       </details>
@@ -464,7 +484,7 @@ function extrasBlock(q, openPanels) {
                   placeholder="50% advance">${esc(q.paymentTerms)}</textarea>
         <div class="qcluster">
           ${pair('Lead time (days)', `<input class="control flush" type="number" min="0" inputmode="numeric" data-leaddays value="${q.leadTimeDays || ''}" placeholder="15">`)}
-          ${pair('Fabric up to', `<input class="control flush" type="number" min="0" inputmode="numeric" data-f="fabricRate" value="${q.fabricRate || 0}">`)}
+          ${pair('Fabric up to', moneyField('data-f="fabricRate"', q.fabricRate))}
         </div>
         <p class="qb-hint" data-leadhint>Shown on the quotation as <b>${esc(q.leadTime || leadTimeRangeText(q.leadTimeDays) || '—')}</b></p>
       </details>
@@ -531,9 +551,7 @@ function footBlock(t, q, open = false) {
       </div>
 
       <div class="qb-acts">
-        <button class="act" data-pdf aria-label="Download as PDF">${icon('download', 18)}<span>PDF</span></button>
-        <button class="act" data-share aria-label="Share this quotation">${icon('upload', 18)}<span>Share</span></button>
-        <button class="btn sm grow" data-done>Done</button>
+        <button class="btn sm grow" data-preview-btn>${icon('note', 18)} Preview</button>
       </div>
     </footer>
   `;
