@@ -30,7 +30,7 @@ import { cloudConfigured } from './config.js';
 import { signedIn, currentOrgId } from './auth.js';
 import { startSync } from './cloud.js';
 import { startQuoteSync } from './quotesync.js';
-import { load as loadQuotes, onChange as onQuotesChange, fixHashtagNumbers } from './quotes.js';
+import { load as loadQuotes, onChange as onQuotesChange, fixHashtagNumbers, attachImportedPhotos } from './quotes.js';
 import { markHTML, hasLogo } from './brand.js';
 import { openSignIn } from './views/signin.js';
 
@@ -493,6 +493,7 @@ function start() {
   purgeCashData();
   purgeCashCommissions();
   fixHashtagNumbers();
+  attachImportedPhotos();
   buildSidebar();
   attachRipple($('#app'));
 

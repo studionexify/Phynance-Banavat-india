@@ -279,6 +279,50 @@ export function fixHashtagNumbers() {
   if (changed) { write(); emit(); }
   return { changed };
 }
+
+/* One-time import: photos scanned out of the original PDF quotations
+   (data/imported-photos.json, built from the client's shared Drive
+   folder) get attached to the matching live line item by row position.
+   Only fills a blank photo, so a photo re-shot or replaced by hand is
+   never clobbered on a later boot. Fire-and-forget from app start —
+   the fetch is lazy so a client with nothing left to fill pays only a
+   304, and write()/emit() happen the same way any other edit does so
+   the update reaches quotesync's outbox. */
+export async function attachImportedPhotos() {
+  let byMrNo;
+  try {
+    const res = await fetch('/data/imported-photos.json');
+    if (!res.ok) return { changed: 0 };
+    byMrNo = await res.json();
+  } catch (e) {
+    return { changed: 0 };
+  }
+
+  let changed = 0;
+  for (const q of state.quotes) {
+    const entries = byMrNo[baseNo(q.mrNo)];
+    if (!entries || !entries.length) continue;
+    let entry = entries[0];
+    if (entries.length > 1) {
+      const client = ((q.client && q.client.name) || '').trim().toLowerCase();
+      entry = entries.find((e) => e.hint && client.includes(e.hint.toLowerCase()))
+        || entries.find((e) => e.hint && e.hint.toLowerCase().includes(client))
+        || entry;
+    }
+    let touched = false;
+    (q.lines || []).forEach((line, i) => {
+      if (line.photo) return;
+      const photo = entry.rows[String(i + 1)];
+      if (!photo) return;
+      line.photo = photo;
+      touched = true;
+    });
+    if (touched) { q.updatedAt = Date.now(); changed++; }
+  }
+  if (changed) { write(); emit(); }
+  return { changed };
+}
+
 export function raw() { return state; }
 export function settings() { return state.settings; }
 
