@@ -4,7 +4,7 @@
    when Kontour goes online, only the read()/write() pair below changes,
    and no view has to be touched. */
 
-import { round2, todayISO, monthKey, isoOf } from './format.js';
+import { round2, todayISO, monthKey, isoOf, fyRange } from './format.js';
 import { KINDS, snapshot, diff, enqueue, clearQueue, setCursor } from './outbox.js';
 import './legacy.js';   // moves pre-rename storage across; must load first
 
@@ -585,6 +585,20 @@ export function dayTotals(iso) {
 
 export function monthTotals(key) {
   return totals(entries().filter((e) => monthKey(e.date) === key));
+}
+
+/* The three figures the Phynance topbar wants: what the market still
+   owes across every job, what Banavat India still owes its own
+   vendors (not tracked yet — always null until that ledger exists),
+   and money in for the current financial year as the turnover
+   figure. */
+export function phynanceStats() {
+  const outstanding = jobs()
+    .map((j) => jobSummary(j.code))
+    .reduce((t, s) => t + (s.outstanding > 0 ? s.outstanding : 0), 0);
+  const { from, to } = fyRange(todayISO());
+  const turnover = totals(inRange(from, to)).in;
+  return { outstanding: round2(outstanding), vendorPayment: null, turnover: round2(turnover) };
 }
 
 export function byCategory(list, type) {

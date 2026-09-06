@@ -147,6 +147,7 @@
 
   --tabbar-h:78px;
   --topbar-h:58px;
+  --brandbar-h:calc(env(safe-area-inset-top, 0px) + 40px);
   --safe-b:env(safe-area-inset-bottom, 0px);
   --safe-t:env(safe-area-inset-top, 0px);
 }
@@ -441,8 +442,25 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:
   position:absolute; inset:0;
   overflow-y:auto; overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
+  padding-top:var(--brandbar-h);
   padding-bottom:calc(var(--tabbar-h) + var(--safe-b) + 26px);
 }
+
+/* ── Sticky brand header ──────────────────────────────────────
+   The one piece of Kontour that never scrolls, is never a screen's
+   own hero, and never changes: the mark and the name of the app
+   itself. On a phone, where the rail's own wordmark has no home,
+   this is that home instead. */
+.brandbar {
+  position:fixed; top:0; left:0; right:0; z-index:30;
+  display:flex; align-items:center; gap:9px;
+  height:var(--brandbar-h);
+  padding:var(--safe-t) 16px 0;
+  background:var(--pine-800);
+  border-bottom:1px solid rgba(var(--accent-rgb), .14);
+}
+.brandbar-logo { width:22px; height:22px; border-radius:6px; flex:none; object-fit:cover; }
+.brandbar-word { font-size:14.5px; font-weight:800; letter-spacing:.6px; color:var(--beige); }
 .screen::-webkit-scrollbar { width:0; height:0; }
 /* Phynance floats the entry button over its bottom-right corner, so
    its screens end far enough up that the last row is never under it. */
@@ -455,8 +473,8 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:
    title and its headline figure are never lost. Because it passes
    over content, it is the right place for glass. */
 .topbar {
-  position:absolute; top:0; left:0; right:0; z-index:20;
-  padding:calc(var(--safe-t) + 10px) 16px 11px;
+  position:absolute; top:var(--brandbar-h); left:0; right:0; z-index:20;
+  padding:10px 16px 11px;
   background:var(--glass-dark);
   -webkit-backdrop-filter:var(--blur);
   backdrop-filter:var(--blur);
@@ -489,7 +507,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:
   background:var(--grad-pine);
   color:var(--beige);
   border-radius:0 0 32px 32px;
-  padding:calc(var(--safe-t) + 18px) 20px 26px;
+  padding:calc(var(--safe-t) + 8px) 20px 12px;
 }
 .hero::before {
   content:""; position:absolute; inset:-55% -25% auto -25%; height:170%;
@@ -501,7 +519,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:
   background:radial-gradient(closest-side, rgba(var(--hero-glow-rgb), .5), transparent 72%);
   pointer-events:none;
 }
-.hero.with-panel { border-radius:0; padding-bottom:38px; }
+.hero.with-panel { border-radius:0; padding-bottom:16px; }
 .hero > * { position:relative; z-index:1; }
 
 /* Hero content lifts and fades as the glass bar takes over — one
@@ -511,14 +529,14 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:
   opacity:calc(1 - var(--p) * .92);
 }
 
-.hero-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
-.hero-title { font-size:17.5px; font-weight:600; letter-spacing:.2px; }
+.hero-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.hero-title { font-size:16px; font-weight:600; letter-spacing:.2px; }
 .hero-title small {
-  display:block; font-size:11.5px; font-weight:400;
+  display:block; font-size:10.5px; font-weight:400;
   color:var(--pine-200); letter-spacing:.3px; margin-top:1px;
 }
 .icon-btn {
-  width:40px; height:40px; border-radius:14px;
+  width:34px; height:34px; border-radius:12px;
   display:grid; place-items:center; color:var(--beige);
   background:rgba(var(--paper-rgb), .07);
   border:1px solid rgba(var(--paper-rgb), .09);
@@ -538,14 +556,14 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:
   content:""; position:absolute; left:0; top:6px; bottom:6px;
   width:1px; background:linear-gradient(180deg, transparent, rgba(var(--accent-rgb), .26), transparent);
 }
-.stat-ico { color:var(--pine-200); margin-bottom:3px; display:block; }
-.stat-val { font-size:23px; font-weight:700; letter-spacing:-.5px; }
-.stat-val .cur { font-size:13px; font-weight:500; opacity:.72; margin-right:1px; }
+.stat-ico { color:var(--pine-200); margin-bottom:2px; display:block; }
+.stat-val { font-size:18px; font-weight:700; letter-spacing:-.5px; }
+.stat-val .cur { font-size:11px; font-weight:500; opacity:.72; margin-right:1px; }
 .stat-val.pos { color:var(--lime); text-shadow:0 0 22px var(--accent-glow-soft); }
 .stat-val.neg { color:var(--clay-lit); }
 .stat-lbl {
-  font-size:10px; color:var(--pine-300);
-  letter-spacing:.9px; margin-top:2px; font-weight:600;
+  font-size:9px; color:var(--pine-300);
+  letter-spacing:.8px; margin-top:1px; font-weight:600;
 }
 
 /* ── Panel ────────────────────────────────────────────────────
@@ -578,6 +596,11 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:
 }
 
 .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.grid3 .card { padding:13px 10px; }
+.grid3 .card-ico { width:32px; height:32px; margin-bottom:9px; border-radius:11px; }
+.grid3 .card-name { font-size:11.5px; }
+.grid3 .card-val { font-size:16px; margin-top:6px; }
 
 /* ── Cards ────────────────────────────────────────────────── */
 .card {
@@ -1386,12 +1409,17 @@ select.control { padding-right:34px; background-position:right 13px center; back
      button in the rail carries its own weight. */
   .fab::before { display:none; }
 
+  /* The rail carries its own wordmark (see .tabbar::before below), so
+     the mobile-only brand bar steps aside and every offset it added
+     comes back out. */
+  .brandbar { display:none; }
   .screen,
   [data-section="phynance"] .screen {
     left:var(--rail-w);
+    padding-top:0;
     padding-bottom:56px;
   }
-  .topbar { left:var(--rail-w); }
+  .topbar { left:var(--rail-w); top:0; padding-top:calc(var(--safe-t) + 10px); }
   .toast-root,
   [data-section="phynance"] .toast-root { left:var(--rail-w); bottom:26px; }
 
