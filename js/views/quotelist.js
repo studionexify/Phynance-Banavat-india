@@ -40,6 +40,16 @@ export function setFilter(next) {
   if (next && next.q != null) query = next.q;
 }
 
+/* The Quotations subnav pill is navigation, not a filter — tapping it
+   always lands on the plain working list, the way tapping any other
+   destination does. Without this, tapping it while inside the Archive
+   just re-painted the same screen (same route, so `show()` treats it
+   as an in-place refresh) and Archive never let go. */
+export function resetView() {
+  archived = false;
+  filter = 'all';
+}
+
 export async function render(root, ctx) {
   const inFy = (f) => fy === 'all' || fyOf(f.head.date) === fy;
   const list = quoteFamilies({ status: filter, q: query, archived }).filter(inFy);
@@ -66,6 +76,20 @@ export async function render(root, ctx) {
         </div>
       </div>
       <div class="stat-row">
+        ${archived ? `
+        <div class="stat">
+          <div class="stat-val num">${counts.all}</div>
+          <div class="stat-lbl">ARCHIVED</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val num">${counts.accepted}</div>
+          <div class="stat-lbl">ACCEPTED</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val num">${counts.declined}</div>
+          <div class="stat-lbl">DECLINED</div>
+        </div>
+        ` : `
         <div class="stat">
           <div class="stat-val num">${qs.activeCount}</div>
           <div class="stat-lbl">ACTIVE ORDER</div>
@@ -78,6 +102,7 @@ export async function render(root, ctx) {
           <div class="stat-val num">${qs.openCount}</div>
           <div class="stat-lbl">OPEN QUOTATIONS</div>
         </div>
+        `}
       </div>
     </header>
 

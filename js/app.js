@@ -322,7 +322,13 @@ function buildSubnav(screen, where) {
             data-route="${it.route}"
             ${it.route === where ? 'aria-current="page"' : ''}>${it.label}</button>
   `).join('');
-  on(nav, '.subtab', (e, b) => show(b.dataset.route));
+  on(nav, '.subtab', (e, b) => {
+    // A subnav pill is a destination, not a filter toggle — landing on
+    // it always shows that screen's plain top-level view, even if the
+    // screen was left mid-filter (e.g. inside the Quotations Archive).
+    if (b.dataset.route === 'quotes') quotes.resetView();
+    show(b.dataset.route);
+  });
 
   // After the hero, so the hero↔topbar handover still sees it first.
   const hero = screen.querySelector('.hero');
