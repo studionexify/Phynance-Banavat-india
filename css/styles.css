@@ -3009,7 +3009,7 @@ body.nav-open .nav-scrim { opacity:1; visibility:visible; pointer-events:auto; }
    the width decides which one is on screen — one list, one sort, one
    selection, drawn twice rather than reasoned about twice. */
 .qtable-wrap { display:none; }
-.qrows .ckbox { display:flex; }
+.qrows .ckbox, .olist .ckbox { display:flex; }
 
 @media (min-width:760px) {
   .qtable-wrap {
@@ -3017,7 +3017,10 @@ body.nav-open .nav-scrim { opacity:1; visibility:visible; pointer-events:auto; }
     background:var(--paper); border:1px solid var(--line-soft);
     border-radius:18px; box-shadow:var(--e1);
   }
-  .qrows, .sortbar.only-narrow { display:none; }
+  /* The cards are the same list; only one of the two is ever on
+     screen. On the Archive the completed-orders tab keeps its own
+     .olist, which has no table beside it to hide it. */
+  .qrows, .qtable-wrap + .olist, .sortbar.only-narrow { display:none; }
 }
 
 .qtable { width:100%; border-collapse:collapse; font-size:13.5px; }
@@ -3082,7 +3085,7 @@ body.nav-open .nav-scrim { opacity:1; visibility:visible; pointer-events:auto; }
   content:''; width:9px; height:2px; border-radius:1px; background:var(--on-accent);
 }
 .ckbox input:focus-visible + .ckbox-box { outline:2px solid var(--ink); outline-offset:2px; }
-.qrow2.picked { border-color:var(--ink); }
+.qrow2.picked, .ocard.picked { border-color:var(--ink); }
 
 /* ── The bulk bar ────────────────────────────────────────────────
    In the page from the start and hidden while nothing is ticked, so

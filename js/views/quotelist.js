@@ -26,66 +26,33 @@ import { openQuoteSheet } from './quotebuilder.js';
 import { openQuoteDoc } from './quotedoc.js';
 import { shareQuotePdf, downloadQuotePdf } from '../quotepdf.js';
 import { pageHead, statCards, searchBar, sectionHead, nothingHere } from './chrome.js';
+import { createQuoteTable } from './quotetable.js';
 
 let filter = 'all';
 let query = '';
 let fy = 'all';
 /* Decided quotations have their own station now — the Archive tab —
    so this screen only ever lists what is still live. */
-const archived = false;
+let archived = false;
 
-/* The headline's own control, not a filter chip: this decides the
-   order of the list, the chips decide which of it is shown. "Reversed
-   ... in terms of MR Number" is the plain-language spec for what this
-   defaults to — newest MR number first, direction flipped by tapping
-   the option already active. */
-const SORTS = {
-  mrNo:   { label: 'MR number', cmp: (a, b) => compareMr(a.head.mrNo, b.head.mrNo) },
-  date:   { label: 'Date',      cmp: (a, b) => (a.head.date || '').localeCompare(b.head.date || '') },
-  client: { label: 'Client',    cmp: (a, b) => clientOf(a.head).localeCompare(clientOf(b.head)) },
-  value:  { label: 'Value',     cmp: (a, b) => valueOf(a.head) - valueOf(b.head) },
-  status: { label: 'Status',    cmp: (a, b) => statusRank(a.head) - statusRank(b.head) },
-};
-let sortKey = 'mrNo';
-let sortDir = 'desc';
+/* The columns, the sort behind them and the ticks in the first one
+   all live in quotetable.js, so the archive's list of decided
+   quotations is the same table with a different set of bulk actions
+   rather than a second copy of this one.
 
-/* Which quotations are ticked, for the actions that are worth doing to
-   a dozen at once rather than one sheet at a time. It survives a
-   refresh — marking six as sent re-renders the list, and losing the
-   ticks halfway through the batch is how a batch gets done twice. */
-const selected = new Set();
-
-/* Status sorts by where a quotation stands in the conversation, not by
-   the alphabet: a draft has not gone out, a sent one is waiting. */
-const STATUS_ORDER = ['draft', 'sent', 'accepted', 'declined', 'superseded'];
-function statusRank(q) {
-  const i = STATUS_ORDER.indexOf(q.status);
-  return i < 0 ? STATUS_ORDER.length : i;
-}
-
-function clientOf(q) {
-  return ((q.client && q.client.name) || 'Unnamed client').trim().toLowerCase();
-}
-
-function valueOf(q) {
-  const t = quoteTotals(q);
-  return q.status === 'accepted' ? jobValueFor(q) : t.total;
-}
-
-/* "C101" < "C119" < "C129-1" < "C129-2" — a plain string compare
-   would put "C119" after "C19" and a revision suffix after nothing
-   at all. Split into the letter, the number, and the revision (if
-   any) and compare those in turn instead. */
-function mrParts(mrNo) {
-  const m = String(mrNo || '').match(/^([A-Za-z]*)(\d+)(?:[-\s(]+(\d+))?/);
-  return m ? [m[1] || '', Number(m[2]) || 0, Number(m[3]) || 0] : [String(mrNo || ''), 0, 0];
-}
-function compareMr(a, b) {
-  const pa = mrParts(a); const pb = mrParts(b);
-  if (pa[0] !== pb[0]) return pa[0] < pb[0] ? -1 : 1;
-  if (pa[1] !== pb[1]) return pa[1] - pb[1];
-  return pa[2] - pb[2];
-}
+   "Reversed ... in terms of MR Number" is the plain-language spec for
+   what the order defaults to — newest MR number first, direction
+   flipped by tapping the heading already sorting. */
+const qtable = createQuoteTable({
+  bulk: [
+    { key: 'sent',    icon: 'check',    label: 'Mark sent' },
+    { key: 'produce', icon: 'anvil',    label: 'Send to production' },
+    { key: 'archive', icon: 'inbox',    label: 'Archive' },
+    { key: 'pdf',     icon: 'download', label: 'Download PDFs' },
+    { key: 'del',     icon: 'trash',    label: 'Delete', danger: true },
+  ],
+  run: runBulk,
+});
 
 /* Opening one quotation straight from the Dashboard — the same
    read-only view a card in this list opens to. */
@@ -110,9 +77,7 @@ export function resetView() {
 
 export async function render(root, ctx) {
   const inFy = (f) => fy === 'all' || fyOf(f.head.date) === fy;
-  const list = quoteFamilies({ status: filter, q: query, archived }).filter(inFy);
-  const dir = sortDir === 'desc' ? -1 : 1;
-  list.sort((a, b) => dir * SORTS[sortKey].cmp(a, b));
+  const list = qtable.sortList(quoteFamilies({ status: filter, q: query, archived }).filter(inFy));
   const qs = quotationStats();
   const all = quoteFamilies({ q: query, archived }).filter(inFy);
   const archivedCount = quoteFamilies({ q: query, archived: true }).filter(inFy).length;
@@ -160,55 +125,22 @@ export async function render(root, ctx) {
 
       ${sectionHead(
         filter === 'all' ? 'Live quotations' : `${STATUS[filter].label} quotations`,
-        sortControl(),
+        qtable.sortControl(),
       )}
-      ${bulkBar()}
-      ${list.length ? `${table(list)}<div class="qrows">${list.map(row).join('')}</div>`
+      ${qtable.bulkBar()}
+      ${list.length ? `${qtable.table(list, { rowActions })}<div class="qrows">${list.map(row).join('')}</div>`
         : nothingHere('note',
             query || filter !== 'all' ? 'No quotation matches' : 'No quotations yet',
             query || filter !== 'all' ? 'Try another filter' : 'Write the first one and it lands here')}
     </div>
   `;
 
-  // A tick that scrolled off the list — filtered or searched away —
-  // is not something a bulk action should quietly act on.
-  const live = new Set(list.map((f) => f.head.id));
-  for (const id of [...selected]) if (!live.has(id)) selected.delete(id);
-  paintSelection(root, list);
+  qtable.wire(root, ctx, list);
 
   on(root, '[data-filter]', (e, b) => { filter = b.dataset.filter; ctx.refresh(); });
   on(root, '[data-fy]', (e, b) => { fy = b.dataset.fy; ctx.refresh(); });
   on(root, '[data-go]', (e, b) => ctx.go(b.dataset.go));
   on(root, '[data-newquote]', () => openQuoteSheet({ onSaved: ctx.refresh }));
-
-  on(root, '[data-sort]', (e, b) => {
-    const key = b.dataset.sort;
-    // Tapping the sort already active flips its direction; picking a
-    // new one starts descending — "newest / largest first" is what
-    // every one of these fields means the first time you reach for it.
-    if (key === sortKey) sortDir = sortDir === 'desc' ? 'asc' : 'desc';
-    else { sortKey = key; sortDir = 'desc'; }
-    ctx.refresh();
-  });
-
-  // The same quotation appears twice in the DOM — once as a table row
-  // for a wide screen, once as a card for a narrow one, only ever one
-  // of them visible. The tick lives in the Set, not in either input,
-  // so both are repainted from it rather than from each other.
-  on(root, '[data-sel]', (e, b) => {
-    e.stopPropagation();
-    if (b.checked) selected.add(b.dataset.sel); else selected.delete(b.dataset.sel);
-    paintSelection(root, list);
-  }, 'change');
-
-  on(root, '[data-selall]', (e, b) => {
-    e.stopPropagation();
-    if (b.checked) for (const f of list) selected.add(f.head.id);
-    else selected.clear();
-    paintSelection(root, list);
-  }, 'change');
-
-  on(root, '[data-bulk]', (e, b) => runBulk(b.dataset.bulk, ctx));
 
   on(root, '[data-edit]', (e, b) => {
     e.stopPropagation();
@@ -239,147 +171,13 @@ export async function render(root, ctx) {
   }
 }
 
-/* The headline's own sort control: the field that decides the order
-   is tappable text, not a form — tap the one already active to flip
-   its direction, tap another to switch to it (descending, since
-   "newest / largest first" is what makes sense the first time). */
-function sortControl() {
+/* The one action a row earns its own icon for on this screen: a
+   quotation still in play is edited often enough to be worth a
+   pencil, and everything else stays one tap under the "⋯". */
+function rowActions(q) {
   return `
-    <div class="sortbar only-narrow">
-      ${Object.entries(SORTS).map(([key, s]) => `
-        <button class="sortbtn ${key === sortKey ? 'on' : ''}" data-sort="${key}">
-          ${esc(s.label)}${key === sortKey ? icon(sortDir === 'desc' ? 'chevD' : 'chevU', 12) : ''}
-        </button>
-      `).join('')}
-    </div>`;
-}
-
-/* ── The table, for a screen with room for columns ───────────────
-   Same list, same sort, same actions as the cards below it — the
-   difference is that a wide screen can show the fields side by side
-   under headings that sort them, which is how this is read at a desk.
-   Only ever one of the two is on screen; the media query decides.
-
-   The heading is the sorter: tapping the one already active flips
-   its direction, exactly as the chips do, because they are the same
-   handler. */
-const COLS = [
-  ['mrNo',   'Quotation', ''],
-  ['client', 'Client',    ''],
-  ['date',   'Issued',    'qt-date'],
-  ['value',  'Amount',    'qt-amt num'],
-  ['status', 'Status',    'qt-st'],
-];
-
-function sortMark(key) {
-  if (key !== sortKey) return `<span class="qt-sortmark">${icon('swap', 11)}</span>`;
-  return `<span class="qt-sortmark on">${icon(sortDir === 'desc' ? 'chevD' : 'chevU', 11)}</span>`;
-}
-
-function checkbox(id, label) {
-  return `
-    <label class="ckbox">
-      <input type="checkbox" data-sel="${esc(id)}" aria-label="${esc(label)}">
-      <span class="ckbox-box">${icon('check', 12)}</span>
-    </label>`;
-}
-
-function table(list) {
-  return `
-    <div class="qtable-wrap">
-      <table class="qtable">
-        <thead>
-          <tr>
-            <th class="qt-check">
-              <label class="ckbox">
-                <input type="checkbox" data-selall aria-label="Select every quotation shown">
-                <span class="ckbox-box">${icon('check', 12)}</span>
-              </label>
-            </th>
-            ${COLS.map(([key, label, cls]) => `
-              <th class="${cls}">
-                <button class="qt-sort ${key === sortKey ? 'on' : ''}" data-sort="${key}">
-                  ${esc(label)}${sortMark(key)}
-                </button>
-              </th>`).join('')}
-            <th class="qt-acts"></th>
-          </tr>
-        </thead>
-        <tbody>${list.map(trow).join('')}</tbody>
-      </table>
-    </div>`;
-}
-
-function trow({ head: q, revisions }) {
-  const t = quoteTotals(q);
-  const st = STATUS[q.status];
-  const jobValue = q.status === 'accepted' ? jobValueFor(q) : t.total;
-  const lines = (q.lines || []).length;
-
-  return `
-    <tr class="qt-row" data-open="${esc(q.id)}" data-row="${esc(q.id)}" tabindex="0">
-      <td class="qt-check">${checkbox(q.id, `Select ${q.mrNo}`)}</td>
-      <td>
-        <div class="qt-no">${esc(q.mrNo)}</div>
-        <div class="qt-sub">${lines} item${lines === 1 ? '' : 's'}${revisions > 1 ? ` · rev ${revisions}` : ''}${q.title ? ` · ${esc(q.title)}` : ''}</div>
-      </td>
-      <td class="qt-client">${esc((q.client && q.client.name) || 'Unnamed client')}</td>
-      <td class="qt-date">${esc(dmy(q.date))}</td>
-      <td class="qt-amt num">${inr(jobValue)}</td>
-      <td class="qt-st"><span class="pill ${st.tone}">${esc(st.label)}</span></td>
-      <td class="qt-acts">
-        <button class="icon-btn plain sm" data-edit="${esc(q.id)}" aria-label="Edit ${esc(q.mrNo)}">${icon('edit', 16)}</button>
-        <button class="icon-btn plain sm" data-more="${esc(q.id)}" aria-label="More actions for ${esc(q.mrNo)}">${icon('menu', 16)}</button>
-      </td>
-    </tr>`;
-}
-
-/* ── Bulk selection ──────────────────────────────────────────────
-   The bar is in the page from the start and simply hidden while
-   nothing is ticked: ticking a box then has nothing to re-render, so
-   the list does not jump under the finger that ticked it. */
-function bulkBar() {
-  const acts = [
-    ['sent',    'check',    'Mark sent'],
-    ['produce', 'anvil',    'Send to production'],
-    ['archive', 'inbox',    'Archive'],
-    ['pdf',     'download', 'Download PDFs'],
-    ['del',     'trash',    'Delete'],
-  ];
-  return `
-    <div class="bulkbar" data-bulkbar hidden>
-      <span class="bulkbar-n" data-bulkcount>0 selected</span>
-      <div class="bulkbar-acts">
-        ${acts.map(([act, ico, label]) => `
-          <button class="bulkbtn ${act === 'del' ? 'danger' : ''}" data-bulk="${act}">
-            ${icon(ico, 15)}<span>${esc(label)}</span>
-          </button>`).join('')}
-        <button class="bulkbtn ghost" data-bulk="clear" aria-label="Clear the selection">${icon('close', 15)}</button>
-      </div>
-    </div>`;
-}
-
-/* One place decides how a tick looks, so the table row, the card and
-   the "select all" box can never disagree about what is selected. */
-function paintSelection(root, list) {
-  const n = selected.size;
-  for (const el of root.querySelectorAll('[data-sel]')) {
-    const on2 = selected.has(el.dataset.sel);
-    el.checked = on2;
-    const holder = el.closest('.qt-row, .qrow2');
-    if (holder) holder.classList.toggle('picked', on2);
-  }
-  const all = root.querySelector('[data-selall]');
-  if (all) {
-    all.checked = n > 0 && n === list.length;
-    all.indeterminate = n > 0 && n < list.length;
-  }
-  const bar = root.querySelector('[data-bulkbar]');
-  if (bar) {
-    bar.hidden = n === 0;
-    const label = bar.querySelector('[data-bulkcount]');
-    if (label) label.textContent = `${n} selected`;
-  }
+    <button class="icon-btn plain sm" data-edit="${esc(q.id)}" aria-label="Edit ${esc(q.mrNo)}">${icon('edit', 16)}</button>
+    <button class="icon-btn plain sm" data-more="${esc(q.id)}" aria-label="More actions for ${esc(q.mrNo)}">${icon('menu', 16)}</button>`;
 }
 
 /* Everything here is worth doing to a dozen quotations at once and
@@ -388,12 +186,7 @@ function paintSelection(root, list) {
    approving one by one with the amount left alone already does. A
    quotation that cannot take an action is skipped rather than
    refused, so one draft in a batch of sent ones does not stop it. */
-async function runBulk(act, ctx) {
-  const ids = [...selected];
-  if (act === 'clear') { selected.clear(); return ctx.refresh(); }
-  if (!ids.length) return;
-  haptic();
-
+async function runBulk(act, ids, ctx) {
   if (act === 'del') {
     const ok = await confirmSheet({
       title: `Delete ${ids.length} quotation${ids.length === 1 ? '' : 's'}?`,
@@ -402,7 +195,7 @@ async function runBulk(act, ctx) {
     });
     if (!ok) return;
     ids.forEach(deleteQuote);
-    selected.clear();
+    qtable.clear();
     toast(`${ids.length} deleted`);
     return ctx.refresh();
   }
@@ -433,7 +226,7 @@ async function runBulk(act, ctx) {
       archiveQuote(id); done += 1;
     }
   }
-  selected.clear();
+  qtable.clear();
   const said = {
     sent: `${done} marked sent`,
     produce: `${done} sent to production`,
@@ -459,7 +252,7 @@ function row({ head: q, family, revisions }) {
 
   return `
     <article class="qrow2 reveal" data-open="${esc(q.id)}" tabindex="0" role="button">
-      ${checkbox(q.id, `Select ${q.mrNo}`)}
+      ${qtable.checkbox(q.id, `Select ${q.mrNo}`)}
       <div class="qrow2-main">
         <div class="qrow2-top">
           <span class="qrow2-client">${esc(quoteName(q))}</span>
