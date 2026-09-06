@@ -14,6 +14,9 @@ import * as quotes from './views/quotelist.js';
 import * as library from './views/library.js';
 import * as commission from './views/commission.js';
 import { load as loadCommissions } from './commissions.js';
+import * as production from './views/production.js';
+import { load as loadOrders } from './orders.js';
+import { openNewOrder } from './views/production.js';
 import { openDesignSheet } from './views/library.js';
 import { openQuoteSheet } from './views/quotebuilder.js';
 import { openSettings } from './views/settings.js';
@@ -34,10 +37,8 @@ import { openSignIn } from './views/signin.js';
    screens, and they appear as a sub-nav once you are in it. */
 
 const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'home', route: 'dashboard' },
+  { id: 'orders', label: 'Orders', icon: 'tag', route: 'dashboard' },
   { id: 'phynance', label: 'Phynance', icon: 'ledger', route: 'home' },
-  { id: 'quotation', label: 'Quotation', icon: 'tag', route: 'quotes' },
-  { id: 'commission', label: 'Commission', icon: 'percent', route: 'commission' },
 ];
 
 const SUBNAV = {
@@ -47,13 +48,16 @@ const SUBNAV = {
     { route: 'jobs', label: 'Jobs' },
     { route: 'reports', label: 'Reports' },
   ],
-  quotation: [
+  orders: [
+    { route: 'dashboard', label: 'Dashboard' },
     { route: 'quotes', label: 'Quotations' },
     { route: 'library', label: 'Design library' },
+    { route: 'production', label: 'Production' },
+    { route: 'commission', label: 'Commission' },
   ],
 };
 
-const VIEWS = { dashboard, home, ledger, jobs, reports, quotes, library, commission };
+const VIEWS = { dashboard, home, ledger, jobs, reports, quotes, library, commission, production };
 
 /* One primary action per screen, in one place. Every screen that can
    make something used to hide its own "+" in the top-right corner of
@@ -68,6 +72,7 @@ const PRIMARY = {
   reports: { label: 'New entry', run: (ctx) => openEntrySheet({ onSaved: ctx.refresh }) },
   quotes:  { label: 'New quotation', run: (ctx) => openQuoteSheet({ onSaved: ctx.refresh }) },
   library: { label: 'Add design', run: (ctx) => openDesignSheet({ onSaved: ctx.refresh }) },
+  production: { label: 'New piece', run: (ctx) => openNewOrder(ctx) },
   // Commission has its own + in the hero, next to the title, the way
   // Jobs does — a partner is added far less often than an entry, so
   // it does not need the thumb's own floating button.
@@ -76,20 +81,19 @@ const PRIMARY = {
 /* Which module a screen belongs to. The Dashboard is Kontour's
    own; money screens are Phynance's; quoting is its own module. */
 const SECTION_OF = {
-  dashboard: 'dashboard',
+  dashboard: 'orders',
   home: 'phynance', ledger: 'phynance', jobs: 'phynance', reports: 'phynance',
-  quotes: 'quotation', library: 'quotation',
-  commission: 'commission',
+  quotes: 'orders', library: 'orders', production: 'orders', commission: 'orders',
 };
 
 function sectionOf(where) {
-  return SECTION_OF[where] || 'dashboard';
+  return SECTION_OF[where] || 'orders';
 }
 
 let route = 'dashboard';
 // Re-entering a module from the rail returns you to the screen you
 // were last on in it, the way switching apps does.
-let lastInSection = { dashboard: 'dashboard', phynance: 'home', quotation: 'quotes', commission: 'commission' };
+let lastInSection = { orders: 'dashboard', phynance: 'home' };
 let painting = false;
 let detachScroll = null;   // hero↔topbar binding for the live screen
 let revealIO = null;       // entrance observer for the live screen
@@ -422,6 +426,7 @@ function start() {
   load();
   loadQuotes();
   loadCommissions();
+  loadOrders();
   buildTabs();
   attachRipple($('#app'));
 
