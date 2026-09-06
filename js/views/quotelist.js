@@ -1,10 +1,11 @@
-/* views/quotelist.js — every quotation, newest first.
+/* views/quotelist.js — every live quotation, newest first.
  *
  * The list is a working queue, not an archive: what is still out with
  * a client sits at the top of mind, so status is the primary filter
  * and the figure shown is always the one the client saw. Decided
- * quotations — accepted or declined — file themselves into Archive,
- * which is a filter of its own rather than a second screen.
+ * quotations — accepted or declined — leave this screen entirely and
+ * file themselves into Archive, which is its own station on the line
+ * now rather than a filter hiding inside this one.
  *
  * A card carries one cluster of facts and one row of actions, and
  * nothing else: client, number, date and total, then share, PDF and
@@ -13,7 +14,7 @@
  */
 
 import { icon } from '../icons.js';
-import { on, esc, emptyState, toast, confirmSheet, field, openSheet, haptic } from '../ui.js';
+import { on, esc, toast, confirmSheet, field, openSheet, haptic } from '../ui.js';
 import {
   quoteFamilies, quoteTotals, quoteName, STATUS, setStatus, deleteQuote, getQuote,
   reviseQuote, duplicateQuote, archiveQuote, unarchiveQuote, isArchived,
@@ -23,11 +24,14 @@ import { inr, dmy, fyOf } from '../format.js';
 import { openQuoteSheet } from './quotebuilder.js';
 import { openQuoteDoc } from './quotedoc.js';
 import { shareQuotePdf, downloadQuotePdf } from '../quotepdf.js';
+import { pageHead, statCards, searchBar, sectionHead, nothingHere } from './chrome.js';
 
 let filter = 'all';
 let query = '';
 let fy = 'all';
-let archived = false;
+/* Decided quotations have their own station now — the Archive tab —
+   so this screen only ever lists what is still live. */
+const archived = false;
 
 /* Opening one quotation straight from the Dashboard — the same
    read-only view a card in this list opens to. */
@@ -58,36 +62,21 @@ export async function render(root, ctx) {
   const statusKeys = archived ? ['all', 'accepted', 'declined'] : ['all', 'draft', 'sent'];
 
   root.innerHTML = `
-    <header class="hero with-panel">
-      <div class="hero-bar">
-        <div class="hero-title">
-          ${archived ? 'Archive' : 'Quotations'}
-          <small>${counts.all} job${counts.all === 1 ? '' : 's'}${fy === 'all' ? '' : ` · ${esc(fy)}`}</small>
-        </div>
-      </div>
-      <div class="stat-row">
-        <div class="stat">
-          <div class="stat-val num">${qs.activeCount}</div>
-          <div class="stat-lbl">ACTIVE ORDER</div>
-        </div>
-        <div class="stat">
-          <div class="stat-val num" ${qs.activeValue ? `data-count="${qs.activeValue}" data-fmt="short"` : ''}>${qs.activeValue ? '' : '—'}</div>
-          <div class="stat-lbl">ACTIVE ORDER VALUE</div>
-        </div>
-        <div class="stat">
-          <div class="stat-val num">${qs.openCount}</div>
-          <div class="stat-lbl">OPEN QUOTATIONS</div>
-        </div>
-      </div>
-    </header>
+    <div class="floor">
+      ${pageHead({
+        title: 'Quotation',
+        sub: `${counts.all} job${counts.all === 1 ? '' : 's'} quoted${fy === 'all' ? '' : ` · ${esc(fy)}`}`,
+        actions: `<button class="pill-btn" data-newquote>${icon('plus', 16)} New quotation</button>`,
+      })}
 
-    <div class="panel">
-      <div class="searchbar">
-        <span class="searchbar-ico">${icon('search', 17)}</span>
-        <input class="control" type="search" data-q value="${esc(query)}"
-               placeholder="${archived ? 'Search the archive' : 'Search client, MR number, job'}"
-               aria-label="Search quotations">
-      </div>
+      ${statCards([
+        { label: 'Open quotations', value: qs.openCount, tone: 'quote', hint: 'awaiting a decision' },
+        { label: 'Active orders', value: qs.activeCount, hint: 'confirmed and in hand' },
+        { label: 'Active order value', value: qs.activeValue || '', money: Boolean(qs.activeValue) },
+        { label: 'Decided', value: archivedCount, tone: 'done', go: 'archive', hint: 'in the archive' },
+      ])}
+
+      ${searchBar(query, 'Search client, MR number, job')}
 
       <div class="chipbar">
         ${statusKeys.map((k) => `
@@ -96,10 +85,6 @@ export async function render(root, ctx) {
             <small>${counts[k]}</small>
           </button>
         `).join('')}
-        <button class="chip ${archived ? 'on' : ''}" data-archived="${archived ? 'off' : 'on'}">
-          ${icon('inbox', 13)} Archive
-          ${archived ? '' : `<small>${archivedCount}</small>`}
-        </button>
         ${years.length > 1 ? `
           <span class="chipbar-sep"></span>
           <button class="chip ${fy === 'all' ? 'on' : ''}" data-fy="all">All years</button>
@@ -107,22 +92,18 @@ export async function render(root, ctx) {
         ` : ''}
       </div>
 
+      ${sectionHead(filter === 'all' ? 'Live quotations' : `${STATUS[filter].label} quotations`)}
       ${list.length ? `<div class="qlist">${list.map(card).join('')}</div>`
-        : emptyState(archived ? 'inbox' : 'note',
-            archived ? 'Nothing archived yet'
-              : query || filter !== 'all' ? 'No quotation matches' : 'No quotations yet',
-            archived ? 'Accepted and declined quotations land here'
-              : query || filter !== 'all' ? 'Try another filter' : 'Tap + to write the first one')}
+        : nothingHere('note',
+            query || filter !== 'all' ? 'No quotation matches' : 'No quotations yet',
+            query || filter !== 'all' ? 'Try another filter' : 'Write the first one and it lands here')}
     </div>
   `;
 
   on(root, '[data-filter]', (e, b) => { filter = b.dataset.filter; ctx.refresh(); });
   on(root, '[data-fy]', (e, b) => { fy = b.dataset.fy; ctx.refresh(); });
-  on(root, '[data-archived]', (e, b) => {
-    archived = b.dataset.archived === 'on';
-    filter = 'all';
-    ctx.refresh();
-  });
+  on(root, '[data-go]', (e, b) => ctx.go(b.dataset.go));
+  on(root, '[data-newquote]', () => openQuoteSheet({ onSaved: ctx.refresh }));
 
   on(root, '[data-doc]', (e, b) => { e.stopPropagation(); openQuoteDoc(b.dataset.doc); });
 
