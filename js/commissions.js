@@ -190,6 +190,20 @@ export function updateEntry(id, changes) {
   return e;
 }
 
+/* Banavat India's CA has asked for cash transactions to be kept out
+   of the books entirely — on the explicit call that an entry
+   recorded as paid in cash is removed outright rather than soft-
+   deleted, so it does not linger in storage under a different
+   commission's history. Runs once per load; harmless once there is
+   nothing left tagged this way. */
+export function purgeCashCommissions() {
+  const before = state.entries.length;
+  state.entries = state.entries.filter((e) => String(e.mode || '').trim().toLowerCase() !== 'cash');
+  const removed = before - state.entries.length;
+  if (removed) { write(); emit(); }
+  return { removed };
+}
+
 export function deleteEntry(id) {
   const e = getEntry(id);
   if (!e) return;
@@ -242,13 +256,13 @@ export function seedKnownPartners() {
       // always come to exactly 10% of the amount next to it — so the
       // real figure is kept as commissionOverride rather than trusting
       // the formula to reproduce it. See newEntry()'s own note.
+      // Four entries the sheet recorded as paid in cash (Cloud 9,
+      // Samasta C202, Shamnu Flat, Mr. Niraj Chandrani) are left out
+      // of this seed entirely, per the CA's call to keep cash out of
+      // the books rather than carry them relabelled.
       entries: [
-        { project: 'Cloud 9 basin leg and structure', jobCode: 'C108', baseAmount: 7500, pct: 10, commissionOverride: 750, date: '2026-07-15', mode: 'Cash', status: 'pending', notes: 'Engineer: Abbas' },
-        { project: 'Samasta C202', jobCode: 'C114', baseAmount: 16000, pct: 10, commissionOverride: 1455, date: '2026-07-16', mode: 'Cash', status: 'pending', notes: 'Engineer: Natwar Bhai' },
         { project: 'Bed and nightstand drawing', jobCode: '', baseAmount: 3300, pct: 10, commissionOverride: 300, date: '2026-06-27', mode: 'UPI', status: 'pending' },
         { project: 'Gulabchand Jewellers (Mandvi)', jobCode: 'C115', baseAmount: 83000, pct: 10, commissionOverride: 7545, date: '2026-08-18', mode: 'Bank', status: 'pending', notes: 'Engineer: Parimal' },
-        { project: 'Shamnu Flat', jobCode: 'C113', baseAmount: 11000, pct: 10, commissionOverride: 1000, date: '2026-07-16', mode: 'Cash', status: 'pending', notes: 'Engineer: Chaitanya bhai' },
-        { project: 'Mr. Niraj Chandrani', jobCode: 'C129-1', baseAmount: 110000, pct: 10, commissionOverride: 10000, date: '', mode: 'Cash', status: 'pending' },
       ],
     },
     {

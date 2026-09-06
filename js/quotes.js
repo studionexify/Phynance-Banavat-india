@@ -59,13 +59,18 @@ export function baseNo(mrNo) {
 
 /* The name a quotation goes by everywhere it is listed: the number
    that identifies the document, and the client it was written for.
-   "C135 - Rahi Construction" is how the business already says it out
-   loud, so it is how the card, the sheet title and the file name say
-   it too — nowhere is left showing the number alone. */
+   The base document reads "C101 Rahi Construction" — no separator
+   between the number and the name, the way the business already
+   says it out loud. A revision's own suffix gets its dash back
+   *before* the client, so the number that changed stays legible:
+   "C101 - 1 Rahi Construction" is revision 1 of that same job. */
 export function quoteName(q) {
   if (!q) return '';
-  const client = (q.client && q.client.name || '').trim();
-  return client ? `${q.mrNo} - ${client}` : `${q.mrNo} - Unnamed client`;
+  const client = (q.client && q.client.name || '').trim() || 'Unnamed client';
+  const mrNo = String(q.mrNo || '');
+  const dash = mrNo.indexOf('-');
+  if (dash === -1) return `${mrNo} ${client}`;
+  return `${mrNo.slice(0, dash)} - ${mrNo.slice(dash + 1)} ${client}`;
 }
 
 /* Two ways of printing the same tax. "Total" foots the whole
@@ -255,6 +260,69 @@ function write() {
 }
 
 export function load() { state = read(); return state; }
+
+/* A handful of quotations came in through importHistory() before the
+   clash-suffix moved off "#" onto "(2)" — see addLine's own note by
+   the generator. Rewriting mrNo alone, without a fresh updatedAt,
+   would never leave this device: quotesync's push() only sends a
+   record whose updatedAt has actually moved, so a silent field edit
+   here would fix the number locally and nowhere else. Runs once per
+   boot; a no-op once no live quote still carries the old mark. */
+export function fixHashtagNumbers() {
+  let changed = 0;
+  for (const q of state.quotes) {
+    if (!q.mrNo || !q.mrNo.includes('#')) continue;
+    q.mrNo = q.mrNo.replace(/#(\d+)/, ' ($1)');
+    q.updatedAt = Date.now();
+    changed++;
+  }
+  if (changed) { write(); emit(); }
+  return { changed };
+}
+
+/* One-time import: photos scanned out of the original PDF quotations
+   (data/imported-photos.json, built from the client's shared Drive
+   folder) get attached to the matching live line item by row position.
+   Only fills a blank photo, so a photo re-shot or replaced by hand is
+   never clobbered on a later boot. Fire-and-forget from app start —
+   the fetch is lazy so a client with nothing left to fill pays only a
+   304, and write()/emit() happen the same way any other edit does so
+   the update reaches quotesync's outbox. */
+export async function attachImportedPhotos() {
+  let byMrNo;
+  try {
+    const res = await fetch('/data/imported-photos.json');
+    if (!res.ok) return { changed: 0 };
+    byMrNo = await res.json();
+  } catch (e) {
+    return { changed: 0 };
+  }
+
+  let changed = 0;
+  for (const q of state.quotes) {
+    const entries = byMrNo[baseNo(q.mrNo)];
+    if (!entries || !entries.length) continue;
+    let entry = entries[0];
+    if (entries.length > 1) {
+      const client = ((q.client && q.client.name) || '').trim().toLowerCase();
+      entry = entries.find((e) => e.hint && client.includes(e.hint.toLowerCase()))
+        || entries.find((e) => e.hint && e.hint.toLowerCase().includes(client))
+        || entry;
+    }
+    let touched = false;
+    (q.lines || []).forEach((line, i) => {
+      if (line.photo) return;
+      const photo = entry.rows[String(i + 1)];
+      if (!photo) return;
+      line.photo = photo;
+      touched = true;
+    });
+    if (touched) { q.updatedAt = Date.now(); changed++; }
+  }
+  if (changed) { write(); emit(); }
+  return { changed };
+}
+
 export function raw() { return state; }
 export function settings() { return state.settings; }
 
@@ -780,6 +848,7 @@ export function unarchiveQuote(id) {
 export function isArchived(quote) {
   return Boolean(quote && quote.archivedAt);
 }
+
 
 /* ── Dashboard figures ───────────────────────────────────────── */
 

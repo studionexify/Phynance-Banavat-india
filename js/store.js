@@ -14,8 +14,11 @@ export const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /* ── Defaults ──────────────────────────────────────────────── */
 
+// No Cash account: Banavat India's CA has asked for cash transactions
+// to be kept out of the books entirely, not just discouraged. See
+// purgeCashData() below for what happens to a device that already has
+// one on file.
 const DEFAULT_ACCOUNTS = [
-  { id: 'cash', name: 'Cash', icon: 'cash', opening: 0, archived: false },
   { id: 'bank', name: 'Bank', icon: 'bank', opening: 0, archived: false },
   { id: 'upi', name: 'UPI', icon: 'phone', opening: 0, archived: false },
 ];
@@ -65,7 +68,7 @@ function blank() {
     entries: [],
     recurring: [],
     settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
-    meta: { lastAccountId: 'cash', lastCategoryIn: 'c_adv', lastCategoryOut: 'c_mat', createdAt: Date.now() },
+    meta: { lastAccountId: 'bank', lastCategoryIn: 'c_adv', lastCategoryOut: 'c_mat', createdAt: Date.now() },
   };
 }
 
@@ -277,7 +280,7 @@ export function addEntry(input) {
     entered: round2(input.entered),
     gst,
     ...amounts,
-    accountId: input.accountId || s.meta.lastAccountId || 'cash',
+    accountId: input.accountId || s.meta.lastAccountId || 'bank',
     toAccountId: input.type === 'transfer' ? (input.toAccountId || '') : '',
     categoryId: input.type === 'transfer' ? '' : (input.categoryId || ''),
     jobCode: (input.jobCode || '').trim().toUpperCase(),
@@ -386,6 +389,28 @@ export function deleteAccount(id) {
   s.accounts = s.accounts.filter((a) => a.id !== id);
   commit();
   return null;
+}
+
+/* Banavat India's CA has asked for cash transactions to be kept out
+   of the books entirely. A device that already had the Cash account
+   — or an entry logged against it before this ran — has that record
+   deleted outright rather than hidden, on the explicit call that a
+   ledger the CA is relying on should not still be carrying it archived
+   in the background. Runs once per load, through the same commit()
+   every other edit goes through, so a synced org has the deletion
+   pushed to every other device too, not just cleared locally. */
+export function purgeCashData() {
+  const s = load();
+  const before = s.entries.length;
+  s.entries = s.entries.filter((e) => e.accountId !== 'cash' && e.toAccountId !== 'cash');
+  const hadAccount = s.accounts.some((a) => a.id === 'cash');
+  s.accounts = s.accounts.filter((a) => a.id !== 'cash');
+  const fixedDefault = s.meta.lastAccountId === 'cash';
+  if (fixedDefault) s.meta.lastAccountId = (s.accounts[0] && s.accounts[0].id) || 'bank';
+
+  const changed = before !== s.entries.length || hadAccount || fixedDefault;
+  if (changed) commit();
+  return { entriesRemoved: before - s.entries.length, accountRemoved: hadAccount };
 }
 
 /** Opening balance + everything that has moved through it. */

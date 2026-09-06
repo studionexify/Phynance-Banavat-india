@@ -215,7 +215,7 @@ function openEntrySheetFor(partnerId, entryId, parentSheet, ctx) {
           'Leave blank to extract it from the order total above. Set this when the real figure on record does not match that — a renegotiated rate, a manual rounding.')}
         <div class="qb-grid">
           ${field('Date', `<input class="control" type="date" data-f="date" value="${e?.date || todayISO()}">`)}
-          ${field('Mode', `<input class="control" data-f="mode" value="${esc(e?.mode || '')}" placeholder="Cash, Bank, UPI">`)}
+          ${field('Mode', `<input class="control" data-f="mode" value="${esc(e?.mode || '')}" placeholder="Bank, UPI, Cheque">`)}
         </div>
         ${field('Paid so far (₹)', `<input class="control num" data-f="paid" type="number" inputmode="decimal" value="${e?.paid || 0}">`)}
         ${field('Notes', `<textarea class="control" data-f="notes" rows="2">${esc(e?.notes || '')}</textarea>`)}

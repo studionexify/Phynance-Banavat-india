@@ -257,10 +257,10 @@ function render(quote, photos, logo = null) {
     if (!foldDims) doc.text('DIMENSIONS', C.dim, y + 14, { size: 9, bold: true, gray: 0.3 });
     doc.text('RATE', rateRight, y + 14, { size: 9, bold: true, align: 'right', gray: 0.3 });
     doc.text('QTY', qtyRight, y + 14, { size: 9, bold: true, align: 'right', gray: 0.3 });
-    doc.text('AMOUNT', amtRight, y + 14, { size: 9, bold: true, align: 'right', gray: 0.3 });
+    doc.text(lineItemGst ? 'SUB-TOTAL' : 'TOTAL', amtRight, y + 14, { size: 9, bold: true, align: 'right', gray: 0.3 });
     if (lineItemGst) {
       doc.text(`GST`, gstRight, y + 14, { size: 9, bold: true, align: 'right', gray: 0.3 });
-      doc.text('LINE TOTAL', lineTotalRight, y + 14, { size: 9, bold: true, align: 'right', gray: 0.3 });
+      doc.text('TOTAL', lineTotalRight, y + 14, { size: 9, bold: true, align: 'right', gray: 0.3 });
     }
     y += 20;
   };
@@ -287,7 +287,10 @@ function render(quote, photos, logo = null) {
 
     if (y + rowH > FOOT_LIMIT) { doc.addPage(); y = M; header(); }
 
-    if (photo) doc.image(photo, C.img, y + 5, imgW, rowH - 12);
+    // A fixed square, never stretched to the row's own height — a
+    // row with more description text is taller, but every photograph
+    // down the column still reads at the same size as the rest.
+    if (photo) doc.image(photo, C.img, y + 5, imgW, imgW);
 
     let ty = y + 12;
     doc.text(String(i + 1), C.sr + 4, ty, { size: 9, gray: 0.45 });

@@ -1,19 +1,21 @@
-/* views/quotelist.js — every quotation, newest first.
+/* views/quotelist.js — every live quotation, newest first.
  *
  * The list is a working queue, not an archive: what is still out with
  * a client sits at the top of mind, so status is the primary filter
  * and the figure shown is always the one the client saw. Decided
- * quotations — accepted or declined — file themselves into Archive,
- * which is a filter of its own rather than a second screen.
+ * quotations — accepted or declined — leave this screen entirely and
+ * file themselves into Archive, which is its own station on the line
+ * now rather than a filter hiding inside this one.
  *
- * A card carries one cluster of facts and one row of actions, and
- * nothing else: client, number, date and total, then share, PDF and
- * everything-else. The long tail of actions lives in a sheet, because
- * a phone has room for three buttons and a thumb, not for nine.
+ * A row is one line: who and what, then the total and where it
+ * stands, then the edit pencil a change actually needs. Everything
+ * else a quotation can do — share, PDF, revise, decline — lives one
+ * tap under the "⋯", because a phone has room for one icon on a row
+ * and a thumb, not for five.
  */
 
 import { icon } from '../icons.js';
-import { on, esc, emptyState, toast, confirmSheet, field, openSheet, haptic } from '../ui.js';
+import { on, esc, toast, confirmSheet, field, openSheet, haptic } from '../ui.js';
 import {
   quoteFamilies, quoteTotals, quoteName, STATUS, setStatus, deleteQuote, getQuote,
   reviseQuote, duplicateQuote, archiveQuote, unarchiveQuote, isArchived,
@@ -23,11 +25,52 @@ import { inr, dmy, fyOf } from '../format.js';
 import { openQuoteSheet } from './quotebuilder.js';
 import { openQuoteDoc } from './quotedoc.js';
 import { shareQuotePdf, downloadQuotePdf } from '../quotepdf.js';
+import { pageHead, statCards, searchBar, sectionHead, nothingHere } from './chrome.js';
 
 let filter = 'all';
 let query = '';
 let fy = 'all';
-let archived = false;
+/* Decided quotations have their own station now — the Archive tab —
+   so this screen only ever lists what is still live. */
+const archived = false;
+
+/* The headline's own control, not a filter chip: this decides the
+   order of the list, the chips decide which of it is shown. "Reversed
+   ... in terms of MR Number" is the plain-language spec for what this
+   defaults to — newest MR number first, direction flipped by tapping
+   the option already active. */
+const SORTS = {
+  mrNo:   { label: 'MR number', cmp: (a, b) => compareMr(a.head.mrNo, b.head.mrNo) },
+  date:   { label: 'Date',      cmp: (a, b) => (a.head.date || '').localeCompare(b.head.date || '') },
+  client: { label: 'Client',    cmp: (a, b) => clientOf(a.head).localeCompare(clientOf(b.head)) },
+  value:  { label: 'Value',     cmp: (a, b) => valueOf(a.head) - valueOf(b.head) },
+};
+let sortKey = 'mrNo';
+let sortDir = 'desc';
+
+function clientOf(q) {
+  return ((q.client && q.client.name) || 'Unnamed client').trim().toLowerCase();
+}
+
+function valueOf(q) {
+  const t = quoteTotals(q);
+  return q.status === 'accepted' ? jobValueFor(q) : t.total;
+}
+
+/* "C101" < "C119" < "C129-1" < "C129-2" — a plain string compare
+   would put "C119" after "C19" and a revision suffix after nothing
+   at all. Split into the letter, the number, and the revision (if
+   any) and compare those in turn instead. */
+function mrParts(mrNo) {
+  const m = String(mrNo || '').match(/^([A-Za-z]*)(\d+)(?:[-\s(]+(\d+))?/);
+  return m ? [m[1] || '', Number(m[2]) || 0, Number(m[3]) || 0] : [String(mrNo || ''), 0, 0];
+}
+function compareMr(a, b) {
+  const pa = mrParts(a); const pb = mrParts(b);
+  if (pa[0] !== pb[0]) return pa[0] < pb[0] ? -1 : 1;
+  if (pa[1] !== pb[1]) return pa[1] - pb[1];
+  return pa[2] - pb[2];
+}
 
 /* Opening one quotation straight from the Dashboard — the same
    read-only view a card in this list opens to. */
@@ -53,6 +96,8 @@ export function resetView() {
 export async function render(root, ctx) {
   const inFy = (f) => fy === 'all' || fyOf(f.head.date) === fy;
   const list = quoteFamilies({ status: filter, q: query, archived }).filter(inFy);
+  const dir = sortDir === 'desc' ? -1 : 1;
+  list.sort((a, b) => dir * SORTS[sortKey].cmp(a, b));
   const qs = quotationStats();
   const all = quoteFamilies({ q: query, archived }).filter(inFy);
   const archivedCount = quoteFamilies({ q: query, archived: true }).filter(inFy).length;
@@ -68,51 +113,21 @@ export async function render(root, ctx) {
   const statusKeys = archived ? ['all', 'accepted', 'declined'] : ['all', 'draft', 'sent'];
 
   root.innerHTML = `
-    <header class="hero with-panel">
-      <div class="hero-bar">
-        <div class="hero-title">
-          ${archived ? 'Archive' : 'Quotations'}
-          <small>${counts.all} job${counts.all === 1 ? '' : 's'}${fy === 'all' ? '' : ` · ${esc(fy)}`}</small>
-        </div>
-      </div>
-      <div class="stat-row">
-        ${archived ? `
-        <div class="stat">
-          <div class="stat-val num">${counts.all}</div>
-          <div class="stat-lbl">ARCHIVED</div>
-        </div>
-        <div class="stat">
-          <div class="stat-val num">${counts.accepted}</div>
-          <div class="stat-lbl">ACCEPTED</div>
-        </div>
-        <div class="stat">
-          <div class="stat-val num">${counts.declined}</div>
-          <div class="stat-lbl">DECLINED</div>
-        </div>
-        ` : `
-        <div class="stat">
-          <div class="stat-val num">${qs.activeCount}</div>
-          <div class="stat-lbl">ACTIVE ORDER</div>
-        </div>
-        <div class="stat">
-          <div class="stat-val num" ${qs.activeValue ? `data-count="${qs.activeValue}" data-fmt="short"` : ''}>${qs.activeValue ? '' : '—'}</div>
-          <div class="stat-lbl">ACTIVE ORDER VALUE</div>
-        </div>
-        <div class="stat">
-          <div class="stat-val num">${qs.openCount}</div>
-          <div class="stat-lbl">OPEN QUOTATIONS</div>
-        </div>
-        `}
-      </div>
-    </header>
+    <div class="floor">
+      ${pageHead({
+        title: 'Quotation',
+        sub: `${counts.all} job${counts.all === 1 ? '' : 's'} quoted${fy === 'all' ? '' : ` · ${esc(fy)}`}`,
+        actions: `<button class="pill-btn" data-newquote>${icon('plus', 16)} New quotation</button>`,
+      })}
 
-    <div class="panel">
-      <div class="searchbar">
-        <span class="searchbar-ico">${icon('search', 17)}</span>
-        <input class="control" type="search" data-q value="${esc(query)}"
-               placeholder="${archived ? 'Search the archive' : 'Search client, MR number, job'}"
-               aria-label="Search quotations">
-      </div>
+      ${statCards([
+        { label: 'Open quotations', value: qs.openCount, tone: 'quote', hint: 'awaiting a decision' },
+        { label: 'Active orders', value: qs.activeCount, hint: 'confirmed and in hand' },
+        { label: 'Active order value', value: qs.activeValue || '', money: Boolean(qs.activeValue) },
+        { label: 'Decided', value: archivedCount, tone: 'done', go: 'archive', hint: 'in the archive' },
+      ])}
+
+      ${searchBar(query, 'Search client, MR number, job')}
 
       <div class="chipbar">
         ${statusKeys.map((k) => `
@@ -121,10 +136,6 @@ export async function render(root, ctx) {
             <small>${counts[k]}</small>
           </button>
         `).join('')}
-        <button class="chip ${archived ? 'on' : ''}" data-archived="${archived ? 'off' : 'on'}">
-          ${icon('inbox', 13)} Archive
-          ${archived ? '' : `<small>${archivedCount}</small>`}
-        </button>
         ${years.length > 1 ? `
           <span class="chipbar-sep"></span>
           <button class="chip ${fy === 'all' ? 'on' : ''}" data-fy="all">All years</button>
@@ -132,36 +143,35 @@ export async function render(root, ctx) {
         ` : ''}
       </div>
 
-      ${list.length ? `<div class="qlist">${list.map(card).join('')}</div>`
-        : emptyState(archived ? 'inbox' : 'note',
-            archived ? 'Nothing archived yet'
-              : query || filter !== 'all' ? 'No quotation matches' : 'No quotations yet',
-            archived ? 'Accepted and declined quotations land here'
-              : query || filter !== 'all' ? 'Try another filter' : 'Tap + to write the first one')}
+      ${sectionHead(
+        filter === 'all' ? 'Live quotations' : `${STATUS[filter].label} quotations`,
+        sortControl(),
+      )}
+      ${list.length ? `<div class="qrows">${list.map(row).join('')}</div>`
+        : nothingHere('note',
+            query || filter !== 'all' ? 'No quotation matches' : 'No quotations yet',
+            query || filter !== 'all' ? 'Try another filter' : 'Write the first one and it lands here')}
     </div>
   `;
 
   on(root, '[data-filter]', (e, b) => { filter = b.dataset.filter; ctx.refresh(); });
   on(root, '[data-fy]', (e, b) => { fy = b.dataset.fy; ctx.refresh(); });
-  on(root, '[data-archived]', (e, b) => {
-    archived = b.dataset.archived === 'on';
-    filter = 'all';
+  on(root, '[data-go]', (e, b) => ctx.go(b.dataset.go));
+  on(root, '[data-newquote]', () => openQuoteSheet({ onSaved: ctx.refresh }));
+
+  on(root, '[data-sort]', (e, b) => {
+    const key = b.dataset.sort;
+    // Tapping the sort already active flips its direction; picking a
+    // new one starts descending — "newest / largest first" is what
+    // every one of these fields means the first time you reach for it.
+    if (key === sortKey) sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+    else { sortKey = key; sortDir = 'desc'; }
     ctx.refresh();
   });
 
-  on(root, '[data-doc]', (e, b) => { e.stopPropagation(); openQuoteDoc(b.dataset.doc); });
-
-  on(root, '[data-share]', async (e, b) => {
+  on(root, '[data-edit]', (e, b) => {
     e.stopPropagation();
-    await share(b.dataset.share);
-  });
-
-  on(root, '[data-pdf]', async (e, b) => {
-    e.stopPropagation();
-    const q = getQuote(b.dataset.pdf);
-    if (!q) return;
-    try { await downloadQuotePdf(q); toast('PDF saved'); }
-    catch { toast('Could not make that PDF', 'err'); }
+    openQuoteSheet({ id: b.dataset.edit, onSaved: ctx.refresh });
   });
 
   on(root, '[data-more]', (e, b) => {
@@ -169,12 +179,12 @@ export async function render(root, ctx) {
     openActions(b.dataset.more, ctx);
   });
 
-  // The card opens the document as it stands — the same view.js is
-  // for. Editing is a deliberate second step, from there or from the
-  // sheet below, never the first tap: a card in a scrolling list is
-  // too easy to hit by accident to drop someone into an edit.
+  // The row opens the document as it stands — the same view.js is
+  // for. Editing is its own pencil, never the first tap: a row in a
+  // scrolling list is too easy to hit by accident to drop someone
+  // into an edit.
   on(root, '[data-open]', (e, b) => {
-    if (e.target.closest('.qcard-acts') || e.target.closest('.qcard-hist')) return;
+    if (e.target.closest('button')) return;
     openQuoteDoc(b.dataset.open, { onSaved: ctx.refresh });
   });
 
@@ -188,10 +198,28 @@ export async function render(root, ctx) {
   }
 }
 
-/* ── One card per job ──────────────────────────────────────────
-   The revision that is currently live, with the earlier rounds
-   folded underneath: a job quoted five times takes one row. */
-function card({ head: q, family, revisions }) {
+/* The headline's own sort control: the field that decides the order
+   is tappable text, not a form — tap the one already active to flip
+   its direction, tap another to switch to it (descending, since
+   "newest / largest first" is what makes sense the first time). */
+function sortControl() {
+  return `
+    <div class="sortbar">
+      ${Object.entries(SORTS).map(([key, s]) => `
+        <button class="sortbtn ${key === sortKey ? 'on' : ''}" data-sort="${key}">
+          ${esc(s.label)}${key === sortKey ? icon(sortDir === 'desc' ? 'chevD' : 'chevU', 12) : ''}
+        </button>
+      `).join('')}
+    </div>`;
+}
+
+/* ── One line per job ────────────────────────────────────────────
+   The revision that is currently live: who, what number, when, and
+   how many pieces — then the total and its status, then the one
+   action a row actually needs often enough to earn its own icon.
+   Everything else is a tap under "⋯". Earlier rounds of the same
+   job fold under it exactly as they did as a card. */
+function row({ head: q, family, revisions }) {
   const t = quoteTotals(q);
   const st = STATUS[q.status];
   const lines = (q.lines || []).length;
@@ -200,59 +228,46 @@ function card({ head: q, family, revisions }) {
   const adjusted = q.approvedTotal != null;
 
   return `
-    <article class="qcard reveal" data-open="${esc(q.id)}" tabindex="0" role="button">
-      <div class="qcard-top">
-        <div class="qcard-id">
-          <div class="qcard-client">${esc(quoteName(q))}</div>
-          <div class="qcard-line">
-            ${esc(dmy(q.date))}
-            <span class="qcard-dot"></span>${lines} item${lines === 1 ? '' : 's'}
-            ${revisions > 1 ? `<span class="qcard-dot"></span>rev ${revisions}` : ''}
-          </div>
-        </div>
-        <div class="qcard-money">
-          <div class="qcard-amt num">${inr(jobValue)}</div>
+    <article class="qrow2 reveal" data-open="${esc(q.id)}" tabindex="0" role="button">
+      <div class="qrow2-main">
+        <div class="qrow2-top">
+          <span class="qrow2-client">${esc(quoteName(q))}</span>
           <span class="pill ${st.tone}">${esc(st.label)}</span>
         </div>
+        <div class="qrow2-meta">
+          ${esc(dmy(q.date))}
+          <span class="qcard-dot"></span>${lines} item${lines === 1 ? '' : 's'}
+          ${revisions > 1 ? `<span class="qcard-dot"></span>rev ${revisions}` : ''}
+          ${q.title ? `<span class="qcard-dot"></span>${esc(q.title)}` : ''}
+        </div>
+        ${adjusted || q.jobExcludesGst ? `
+          <div class="qcard-flags">
+            ${adjusted ? `<span class="pill mut sm">Approved at ${inr(jobValue)}, quoted ${inr(t.total)}</span>` : ''}
+            ${q.jobExcludesGst ? `<span class="pill mut sm">Job value excl. GST</span>` : ''}
+          </div>` : ''}
+        ${older.length ? `
+          <details class="qcard-hist">
+            <summary>${older.length} earlier round${older.length === 1 ? '' : 's'}</summary>
+            ${older.map((o) => {
+              const ot = quoteTotals(o);
+              const ost = STATUS[o.status];
+              return `
+                <button class="qhist" data-doc="${esc(o.id)}">
+                  <span class="qhist-n">${esc(o.mrNo)}</span>
+                  <span class="qhist-d">${esc(dmy(o.date))}</span>
+                  <span class="pill ${ost.tone}">${esc(ost.label)}</span>
+                  <span class="qhist-a num">${inr(ot.total)}</span>
+                </button>`;
+            }).join('')}
+          </details>` : ''}
       </div>
 
-      ${adjusted || q.jobExcludesGst ? `
-        <div class="qcard-flags">
-          ${adjusted ? `<span class="pill mut sm">Approved at ${inr(jobValue)}, quoted ${inr(t.total)}</span>` : ''}
-          ${q.jobExcludesGst ? `<span class="pill mut sm">Job value excl. GST</span>` : ''}
-        </div>` : ''}
-
-      ${q.title ? `<p class="qcard-title">${esc(q.title)}</p>` : ''}
-
-      ${older.length ? `
-        <details class="qcard-hist">
-          <summary>${older.length} earlier round${older.length === 1 ? '' : 's'}</summary>
-          ${older.map((o) => {
-            const ot = quoteTotals(o);
-            const ost = STATUS[o.status];
-            return `
-              <button class="qhist" data-doc="${esc(o.id)}">
-                <span class="qhist-n">${esc(o.mrNo)}</span>
-                <span class="qhist-d">${esc(dmy(o.date))}</span>
-                <span class="pill ${ost.tone}">${esc(ost.label)}</span>
-                <span class="qhist-a num">${inr(ot.total)}</span>
-              </button>`;
-          }).join('')}
-        </details>` : ''}
-
-      <div class="qcard-acts">
-        <button class="act" data-share="${esc(q.id)}" aria-label="Share this quotation">
-          ${icon('upload', 17)}<span>Share</span>
-        </button>
-        <button class="act" data-pdf="${esc(q.id)}" aria-label="Download as PDF">
-          ${icon('download', 17)}<span>PDF</span>
-        </button>
-        <button class="act" data-doc="${esc(q.id)}" aria-label="Preview the document">
-          ${icon('note', 17)}<span>View</span>
-        </button>
-        <button class="act ghost" data-more="${esc(q.id)}" aria-label="More actions">
-          ${icon('filter', 17)}
-        </button>
+      <div class="qrow2-side">
+        <span class="qrow2-amt num">${inr(jobValue)}</span>
+        <div class="qrow2-acts">
+          <button class="icon-btn plain sm" data-edit="${esc(q.id)}" aria-label="Edit this quotation">${icon('edit', 16)}</button>
+          <button class="icon-btn plain sm" data-more="${esc(q.id)}" aria-label="More actions">${icon('filter', 16)}</button>
+        </div>
       </div>
     </article>
   `;
@@ -284,7 +299,11 @@ function openActions(id, ctx) {
   if (!q) return;
   const gone = isArchived(q);
 
-  const rows = [];
+  const rows = [
+    ['view', 'note', 'Preview the document', ''],
+    ['share', 'upload', 'Share', 'Sends the PDF'],
+    ['pdf', 'download', 'Download as PDF', ''],
+  ];
   if (!gone && q.status === 'draft') {
     rows.push(['sent', 'check', 'Mark as sent', 'It is with the client now']);
   }
@@ -337,6 +356,15 @@ function openActions(id, ctx) {
         }
 
         if (act === 'accept') { h.close(); return openAccept(id, ctx); }
+
+        if (act === 'view') { h.close(); return openQuoteDoc(id, { onSaved: ctx.refresh }); }
+        if (act === 'share') { h.close(); return share(id); }
+        if (act === 'pdf') {
+          h.close();
+          try { await downloadQuotePdf(q); toast('PDF saved'); }
+          catch { toast('Could not make that PDF', 'err'); }
+          return;
+        }
 
         h.close();
         if (act === 'sent') { setStatus(id, 'sent'); toast('Marked sent'); }
