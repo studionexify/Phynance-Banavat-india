@@ -3,7 +3,7 @@
 import { icon } from './icons.js';
 import { $, on, toast, closeTopSheet, sheetCount, haptic } from './ui.js';
 import { biometricEnabled, verifyBiometric } from './biometric.js';
-import { load, hasPin, checkPin, device, onChange } from './store.js';
+import { load, hasPin, checkPin, device, onChange, purgeCashData } from './store.js';
 import { openEntrySheet } from './views/entry.js';
 import * as dashboard from './views/dashboard.js';
 import * as home from './views/home.js';
@@ -13,7 +13,7 @@ import * as reports from './views/reports.js';
 import * as quotes from './views/quotelist.js';
 import * as library from './views/library.js';
 import * as commission from './views/commission.js';
-import { load as loadCommissions } from './commissions.js';
+import { load as loadCommissions, purgeCashCommissions } from './commissions.js';
 import * as inproduction from './views/production.js';
 import * as subcontractor from './views/subcontractor.js';
 import * as qc from './views/qc.js';
@@ -486,6 +486,12 @@ function start() {
   loadQuotes();
   loadCommissions();
   loadOrders();
+  // The CA's call, not a preference: no cash account, no entry logged
+  // against one. Runs every boot — cheap once there is nothing left to
+  // remove — so it also catches a row pulled back down from a device
+  // that has not yet updated.
+  purgeCashData();
+  purgeCashCommissions();
   buildSidebar();
   attachRipple($('#app'));
 

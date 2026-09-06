@@ -167,7 +167,7 @@ function accountsSheet(ctx, back) {
           </div>
           <button class="btn sm" data-add>${icon('plus', 15)} Add account</button>
           <div class="hint" style="margin-top:10px">
-            An account is also the payment mode — Cash, Bank and UPI are how your sheets already record it.
+            An account is also the payment mode — Bank and UPI are how your sheets already record it.
             Set the opening balance once and the running total stays true.
           </div>`;
       }
@@ -181,7 +181,7 @@ function accountsSheet(ctx, back) {
 
 function editAccount(id, done) {
   const a = id ? accounts(true).find((x) => x.id === id) : null;
-  const icons = ['cash', 'bank', 'phone', 'wallet', 'user', 'box'];
+  const icons = ['bank', 'phone', 'wallet', 'user', 'box'];
   const sheet = openSheet({
     title: a ? a.name : 'New account',
     body: `
